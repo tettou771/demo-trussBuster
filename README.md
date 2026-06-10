@@ -3,6 +3,8 @@
 トラスタワーを大砲で吹っ飛ばす 3D 物理デモリッションゲーム。
 TrussC + tcxPhysics (Jolt) + tcxImGui + tcxNodeInspector のショーケース。
 
+**▶ ブラウザで遊ぶ: https://tettou771.github.io/demo-trussBuster/** （スマホ対応・WebGL2）
+
 ![genre](https://img.shields.io/badge/genre-arcade%20demolition-orange)
 
 ## 遊び方
