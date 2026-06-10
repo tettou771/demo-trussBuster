@@ -338,13 +338,22 @@ private:
         blockL_.clear();
 
         const LevelDef& def = levels_[idx];
+        int targets = 0;
         for (const auto& bd : def.blocks) {
+            if (bd.wall) {
+                // static obstacle: immovable scenery, not a target
+                auto wall = make_shared<StaticProp>(bd.pos, bd.size, bd.color);
+                wall->setName("wall");
+                towerRoot_->addChild(wall);
+                continue;
+            }
             auto block = make_shared<Block>(bd);
             blockL_.push_back(block->busted.listen(this, &GameScene::onBlockBusted));
             towerRoot_->addChild(block);
+            targets++;
         }
         shots_ = def.shots;
-        blocksTotal_ = (int)def.blocks.size();
+        blocksTotal_ = targets;
         blocksLeft_ = blocksTotal_;
         lastBonus_ = 0;
         settle_ = 0;

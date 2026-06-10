@@ -192,6 +192,8 @@ void tcApp::registerMcpTools() {
                     bd.color = Color(c[0].get<float>(), c[1].get<float>(), c[2].get<float>());
                 }
                 bd.points = b.value("points", 100);
+                bd.wall = b.value("wall", false);
+                if (bd.wall && !b.contains("color")) bd.color = wallColor();
                 def.blocks.push_back(bd);
             }
             scene_->setLevelDef(1, def);

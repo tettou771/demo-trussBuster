@@ -13,7 +13,11 @@ struct BlockDef {
     Vec3  size;
     Color color;
     int   points = 100;
+    bool  wall = false;   // static obstacle: immovable, doesn't count, can't bust
 };
+
+// standard look for static obstacles (dark, reads as scenery)
+inline Color wallColor() { return Color(0.20f, 0.21f, 0.28f); }
 
 struct LevelDef {
     string           name;
@@ -144,58 +148,54 @@ inline vector<LevelDef> makeLevels() {
     // Mechanics verified by MCP playtest (see load_custom_level workflow).
     // ------------------------------------------------------------------
 
-    {   // Level 6: thread the gap between the shields, hit pair SEAMS to
-        // strike two blocks with one ball
-        LevelDef l{"NEEDLE EYE", 4, {}};
+    {   // Level 6: thread the shield gap for the gold pair; the corner
+        // blues hide behind STATIC shade walls — direct fire is wasted, you
+        // must shoot the wide red pusher next to each so it sweeps them off
+        LevelDef l{"NEEDLE EYE", 6, {}};
         Color shield(0.85f, 0.45f, 0.40f), pairC(0.95f, 0.85f, 0.30f);
         Color single(0.55f, 0.80f, 0.95f);
         l.blocks.push_back({Vec3(-1.0f, 1.55f, -5.0f), Vec3(0.8f, 1.1f, 0.3f), shield, 100});
         l.blocks.push_back({Vec3( 1.0f, 1.55f, -5.0f), Vec3(0.8f, 1.1f, 0.3f), shield, 100});
-        // adjacent pair behind the gap: hit the seam, take both
         l.blocks.push_back({Vec3(-0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         l.blocks.push_back({Vec3( 0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        // open-lane singles at the corners (yaw practice)
-        // in the crash lane of a knocked shield: carom one slab into one
-        l.blocks.push_back({Vec3(-2.3f, 1.2f, -7.5f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
-        l.blocks.push_back({Vec3( 2.3f, 1.2f, -7.5f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
-        levels.push_back(l);
-    }
-
-    {   // Level 7: nine scattered-looking cubes are really THREE depth
-        // columns aligned with the cannon (the camera angle hides it) —
-        // shoot ALONG a column to tunnel through all three
-        LevelDef l{"X-RAY", 5, {}};
-        Color amethyst(0.70f, 0.60f, 0.90f);
-        const float lanes[3][2] = {{-1.8f, -7.0f}, {0.3f, -6.6f}, {1.6f, -6.9f}};
-        for (auto& ln : lanes) {
-            float xt = ln[0], zt = ln[1];
-            for (int i = -1; i <= 1; i++) {
-                float z = zt + i * 0.46f;
-                float x = xt * (6.5f - z) / (6.5f - zt);   // on the cannon ray
-                l.blocks.push_back({Vec3(x, 1.23f, z), Vec3(0.45f, 0.45f, 0.45f),
-                                    amethyst, 100});
-            }
+        for (float sgn : {-1.0f, 1.0f}) {
+            l.blocks.push_back({Vec3(sgn * 2.3f, 1.95f, -6.9f), Vec3(0.9f, 1.9f, 0.25f),
+                                wallColor(), 0, true});
+            l.blocks.push_back({Vec3(sgn * 1.5f, 1.5f, -7.05f), Vec3(1.5f, 1.0f, 0.3f),
+                                shield, 150});
+            l.blocks.push_back({Vec3(sgn * 2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f),
+                                single, 100});
         }
         levels.push_back(l);
     }
 
-    {   // Level 8: knock each shield slab so it caroms into the pair behind —
-        // the pairs sit straight / right-shifted / left-shifted, so you must
-        // hit the right EDGE of each shield
-        LevelDef l{"BILLIARDS", 5, {}};
-        Color shield(0.85f, 0.45f, 0.40f), pairC(0.95f, 0.85f, 0.30f);
-        const float laneX[3] = {-1.9f, 0.0f, 1.9f};
-        // pair seams sit on the CANNON RAY through each shield (the cannon is
-        // at x=0, so "behind" follows the ray, not straight z), then shifted
-        // sideways so each lane needs a different shield-edge hit
-        const float pairSeam[3] = {-2.26f, 0.40f, 1.86f};
-        for (int i = 0; i < 3; i++) {
-            l.blocks.push_back({Vec3(laneX[i], 1.55f, -5.2f), Vec3(0.9f, 1.1f, 0.3f),
-                                shield, 100});
-            float px = pairSeam[i];
-            l.blocks.push_back({Vec3(px - 0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-            l.blocks.push_back({Vec3(px + 0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        }
+    {   // Level 7: a STATIC roof over the lane — arcing shots smack it, only
+        // flat MAX-power shots fit underneath (release in the white zone!)
+        LevelDef l{"LIMBO", 6, {}};
+        Color goldC(0.95f, 0.85f, 0.30f), single(0.55f, 0.80f, 0.95f);
+        l.blocks.push_back({Vec3(0, 2.45f, -5.2f), Vec3(3.4f, 0.25f, 0.9f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(-1.85f, 1.65f, -5.2f), Vec3(0.3f, 1.3f, 0.9f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3( 1.85f, 1.65f, -5.2f), Vec3(0.3f, 1.3f, 0.9f), wallColor(), 0, true});
+        for (float x : {-0.8f, 0.0f, 0.8f})
+            l.blocks.push_back({Vec3(x, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), goldC, 200});
+        l.blocks.push_back({Vec3(-2.75f, 1.2f, -6.2f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
+        l.blocks.push_back({Vec3( 2.75f, 1.2f, -6.2f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
+        levels.push_back(l);
+    }
+
+    {   // Level 8: a STATIC rampart with two arrow slits — thread the pairs
+        // through them; the purple pair has no slit: lob it over the top
+        LevelDef l{"ARROW SLIT", 5, {}};
+        Color pairC(0.95f, 0.85f, 0.30f), lobC(0.70f, 0.60f, 0.90f);
+        l.blocks.push_back({Vec3(-2.46f, 1.85f, -5.6f), Vec3(1.48f, 1.7f, 0.3f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3( 0.13f, 1.85f, -5.6f), Vec3(2.30f, 1.7f, 0.3f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3( 2.59f, 1.85f, -5.6f), Vec3(1.22f, 1.7f, 0.3f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(-1.76f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3(-1.24f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3( 1.54f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3( 2.06f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3(-0.56f, 1.25f, -7.0f), Vec3(0.5f, 0.5f, 0.5f), lobC, 300});
+        l.blocks.push_back({Vec3(-0.04f, 1.25f, -7.0f), Vec3(0.5f, 0.5f, 0.5f), lobC, 300});
         levels.push_back(l);
     }
 
@@ -211,30 +211,30 @@ inline vector<LevelDef> makeLevels() {
             l.blocks.push_back({Vec3(cx, 1.95f, -7.3f), Vec3(0.45f, 0.45f, 0.45f), cargoC, 200});
             l.blocks.push_back({Vec3(cx, 1.95f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), cargoC, 200});
         }
-        // center: plain seam pair as a breather
         l.blocks.push_back({Vec3(-0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), cargoC, 200});
         l.blocks.push_back({Vec3( 0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), cargoC, 200});
         levels.push_back(l);
     }
 
-    {   // Level 10: the final exam — dominoes into the gold, shielded pair,
-        // and a plow lane, all on one platform
-        LevelDef l{"MASTERPIECE", 7, {}};
-        Color domC(0.60f, 0.85f, 0.50f);
-        Color shield(0.85f, 0.45f, 0.40f), pairC(0.95f, 0.85f, 0.30f);
-        Color wallC(0.90f, 0.80f, 0.40f), rowC(0.50f, 0.75f, 0.95f);
-        // center: domino run ending at the gold block
-        for (float z : {-4.8f, -5.9f, -7.0f})
-            l.blocks.push_back({Vec3(0, 1.7f, z), Vec3(1.0f, 1.4f, 0.25f), domC, 100});
-        l.blocks.push_back({Vec3(0, 1.25f, -7.9f), Vec3(0.5f, 0.5f, 0.5f), gold, 500});
-        // left: shield + seam pair
-        l.blocks.push_back({Vec3(-1.9f, 1.55f, -5.2f), Vec3(1.0f, 1.1f, 0.3f), shield, 100});
-        l.blocks.push_back({Vec3(-2.16f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3(-1.64f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        // right: mini plow
-        l.blocks.push_back({Vec3(1.9f, 1.65f, -4.7f), Vec3(1.6f, 1.3f, 0.3f), wallC, 150});
-        for (float x : {1.4f, 1.9f, 2.4f})
-            l.blocks.push_back({Vec3(x, 1.2f, -7.7f), Vec3(0.4f, 0.4f, 0.4f), rowC, 100});
+    {   // Level 10: the gauntlet — one lane per discipline: shaded corner
+        // (pusher sweep), roof tunnel (MAX thread), edge slit (precision yaw)
+        LevelDef l{"GAUNTLET", 5, {}};
+        Color shield(0.85f, 0.45f, 0.40f), single(0.55f, 0.80f, 0.95f);
+        Color goldC(1.0f, 0.82f, 0.1f), pairC(0.95f, 0.85f, 0.30f);
+        // left: shade wall + wide pusher + hidden blue
+        l.blocks.push_back({Vec3(-2.3f, 1.95f, -6.9f), Vec3(0.9f, 1.9f, 0.25f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(-1.5f, 1.5f, -7.05f), Vec3(1.5f, 1.0f, 0.3f), shield, 150});
+        l.blocks.push_back({Vec3(-2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
+        // center: roof tunnel + gold pair
+        l.blocks.push_back({Vec3(0.2f, 2.45f, -5.4f), Vec3(2.0f, 0.25f, 0.9f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(-0.7f, 1.65f, -5.4f), Vec3(0.25f, 1.3f, 0.9f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3( 1.1f, 1.65f, -5.4f), Vec3(0.25f, 1.3f, 0.9f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(-0.06f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300});
+        l.blocks.push_back({Vec3( 0.46f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300});
+        // right: rampart with an edge slit, pair behind it
+        l.blocks.push_back({Vec3(1.75f, 1.85f, -5.8f), Vec3(1.0f, 1.7f, 0.3f), wallColor(), 0, true});
+        l.blocks.push_back({Vec3(2.58f, 1.25f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), pairC, 200});
+        l.blocks.push_back({Vec3(3.02f, 1.25f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), pairC, 200});
         levels.push_back(l);
     }
 
