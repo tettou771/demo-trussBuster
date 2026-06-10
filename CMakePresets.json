@@ -1,0 +1,41 @@
+{
+  "buildPresets": [
+    {
+      "configurePreset": "macos",
+      "jobs": 4,
+      "name": "macos"
+    },
+    {
+      "configurePreset": "web",
+      "jobs": 4,
+      "name": "web"
+    }
+  ],
+  "configurePresets": [
+    {
+      "binaryDir": "${sourceDir}/build-macos",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+        "TRUSSC_DIR": "/Users/toru/Nextcloud/Make/TrussC/TrussC/core"
+      },
+      "displayName": "macOS",
+      "generator": "Unix Makefiles",
+      "name": "macos"
+    },
+    {
+      "binaryDir": "${sourceDir}/build-web",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "TC_WEB_BACKEND": "WGPU",
+        "TRUSSC_DIR": "/Users/toru/Nextcloud/Make/TrussC/TrussC/core"
+      },
+      "displayName": "Web (Emscripten)",
+      "generator": "Unix Makefiles",
+      "name": "web",
+      "toolchainFile": "/opt/homebrew/Cellar/emscripten/5.0.4/libexec/cmake/Modules/Platform/Emscripten.cmake"
+    }
+  ],
+  "version": 6
+}

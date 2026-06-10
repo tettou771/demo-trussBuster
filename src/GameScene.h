@@ -1,0 +1,465 @@
+#pragma once
+
+#include <TrussC.h>
+#include <tcxPhysics.h>
+#include "ChipTunes.h"
+#include "FlatRenderer.h"
+#include "Levels.h"
+#include "Block.h"
+#include "Cannonball.h"
+#include "Cannon.h"
+
+using namespace std;
+using namespace tc;
+using namespace tcx;
+
+enum class Phase { Title, Playing, LevelClear, GameOver, AllClear };
+
+inline const char* phaseName(Phase p) {
+    switch (p) {
+        case Phase::Title:      return "Title";
+        case Phase::Playing:    return "Playing";
+        case Phase::LevelClear: return "LevelClear";
+        case Phase::GameOver:   return "GameOver";
+        case Phase::AllClear:   return "AllClear";
+    }
+    return "?";
+}
+
+// A static physics box with a renderer (platform, pedestal).
+class StaticProp : public Node {
+public:
+    StaticProp(const Vec3& pos, const Vec3& size, const Color& color)
+        : pos_(pos), size_(size), color_(color) {}
+
+    void setup() override {
+        setPos(pos_);
+        addMod<RigidBody>(ColliderShape::box(size_), BodyType::Static);
+        addMod<FlatRenderer>()->setColor(color_);
+    }
+
+private:
+    Vec3 pos_, size_;
+    Color color_;
+};
+
+// The 3D world: camera scope, physics, cannon, towers, game state machine.
+class GameScene : public Node {
+public:
+    // --- state accessors (HUD / MCP) ----------------------------------------
+    Phase  getPhase() const      { return phase_; }
+    int    getScore() const      { return score_; }
+    int    getHiScore() const    { return hiScore_; }
+    int    getShots() const      { return shots_; }
+    int    getBlocksTotal() const { return blocksTotal_; }
+    int    getBlocksLeft() const { return blocksLeft_; }
+    int    getLevelNumber() const { return (int)levelIdx_ + 1; }
+    int    getLastBonus() const  { return lastBonus_; }
+    bool   isAutopilot() const   { return autopilot_; }
+    const string& getLevelName() const { return levels_[levelIdx_].name; }
+    Cannon* cannon()             { return cannon_.get(); }
+
+    using Super = Node;
+    TC_REFLECT(GameScene)
+        TC_PROPERTY_RO(score, getScore)
+        TC_PROPERTY_RO(shots, getShots)
+        TC_PROPERTY_RO(blocksLeft, getBlocksLeft)
+        TC_PROPERTY_RO(level, getLevelNumber)
+    TC_REFLECT_END
+
+    int aliveBalls() const {
+        int n = 0;
+        for (auto& c : ballsRoot_->getChildren())
+            if (!c->isDead()) n++;
+        return n;
+    }
+
+    json stateJson() {
+        return json{
+            {"phase", phaseName(phase_)},
+            {"level", getLevelNumber()},
+            {"levelName", getLevelName()},
+            {"score", score_},
+            {"hiScore", hiScore_},
+            {"shots", shots_},
+            {"blocksTotal", blocksTotal_},
+            {"blocksLeft", blocksLeft_},
+            {"ballsInFlight", aliveBalls()},
+            {"autopilot", autopilot_},
+            {"cannon", {
+                {"yawDeg", cannon_->getYawDeg()},
+                {"pitchDeg", cannon_->getPitchDeg()},
+                {"power", cannon_->getPower()},
+                {"charging", cannon_->isCharging()},
+            }},
+        };
+    }
+
+    // --- commands (keys / ImGui / MCP) ---------------------------------------
+    void startGame() {
+        score_ = 0;
+        levelIdx_ = 0;
+        loadLevel(0);
+        phase_ = Phase::Playing;
+        jukebox().startJingle.play();
+        if (!jukebox().bgm.isPlaying()) jukebox().bgm.play();
+    }
+
+    void toTitle() {
+        phase_ = Phase::Title;
+        levelIdx_ = 2;          // attract demo plays on THE WALL
+        loadLevel(levelIdx_);
+        aiTimer_ = 1.5f;        // demo starts shooting soon
+        if (!jukebox().bgm.isPlaying()) jukebox().bgm.play();
+    }
+
+    void requestFire(float power) {
+        if (phase_ == Phase::Playing) {
+            if (shots_ <= 0) { jukebox().dryFire.play(); return; }
+            cannon_->fire(power);
+        } else if (phase_ == Phase::Title) {
+            cannon_->fire(power);
+        }
+    }
+
+    void setAim(float yawDeg, float pitchDeg) {
+        cannon_->setYawDeg(yawDeg);
+        cannon_->setPitchDeg(pitchDeg);
+    }
+
+    void setAutopilot(bool on) { autopilot_ = on; aiTimer_ = 0; aiAiming_ = false; }
+
+    // jump straight into a level (debug / MCP)
+    void gotoLevel(int oneBased) {
+        levelIdx_ = (size_t)clamp(oneBased - 1, 0, (int)levels_.size() - 1);
+        loadLevel(levelIdx_);
+        phase_ = Phase::Playing;
+        if (!jukebox().bgm.isPlaying()) jukebox().bgm.play();
+    }
+
+    void handleKey(int key, bool down) {
+        if (key == KEY_LEFT || key == KEY_RIGHT || key == KEY_UP || key == KEY_DOWN) {
+            held_[key] = down;
+            return;
+        }
+        if (down && key == KEY_ENTER) {
+            if (phase_ == Phase::Title)         startGame();
+            else if (phase_ == Phase::GameOver) toTitle();
+            else if (phase_ == Phase::AllClear) toTitle();
+            return;
+        }
+        if (key == KEY_SPACE && phase_ == Phase::Playing && !autopilot_) {
+            if (down && !cannon_->isCharging()) {
+                if (shots_ > 0) cannon_->beginCharge();
+                else            jukebox().dryFire.play();
+            } else if (!down && cannon_->isCharging()) {
+                cannon_->releaseCharge();
+            }
+        }
+    }
+
+    // --- lifecycle ------------------------------------------------------------
+    void setup() override {
+        setName("scene");
+
+        defaultWorld().setup();
+        defaultWorld().setGravity(Vec3(0, -12.0f, 0));
+        defaultWorld().addGroundPlane(0.0f);
+
+        // fixed camera: no mouse orbit — the slight off-axis view is part of
+        // the aiming challenge, and an orbiting camera would also consume the
+        // clicks meant for the touch buttons
+        cam_.setTarget(0.0f, 1.4f, -1.5f);
+        cam_.setDistance(13.5f);
+        cam_.setAzimuth(0.22f);
+        cam_.setElevation(0.30f);
+
+        keyLight_.setDirectional(Vec3(-0.4f, -1.0f, -0.55f));
+        keyLight_.setDiffuse(1.0f, 0.96f, 0.88f);
+        keyLight_.setIntensity(2.4f);
+        addLight(keyLight_);
+
+        fillLight_.setDirectional(Vec3(0.6f, -0.25f, 0.5f));
+        fillLight_.setDiffuse(0.55f, 0.58f, 0.70f);
+        fillLight_.setIntensity(1.1f);
+        addLight(fillLight_);
+
+        // narrow depth: hit blocks should fall off the back edge easily
+        auto platform = make_shared<StaticProp>(Vec3(0, 0.5f, -6.0f), Vec3(6.4f, 1, 4.2f),
+                                                Color(0.30f, 0.32f, 0.40f));
+        platform->setName("platform");
+        addChild(platform);
+
+        auto pedestal = make_shared<StaticProp>(Vec3(0, 0.25f, 6.5f), Vec3(1.5f, 0.5f, 1.5f),
+                                                Color(0.18f, 0.19f, 0.24f));
+        pedestal->setName("pedestal");
+        addChild(pedestal);
+
+        cannon_ = make_shared<Cannon>();
+        cannon_->setPos(0, 0.5f, 6.5f);
+        addChild(cannon_);
+
+        towerRoot_ = make_shared<Node>();
+        towerRoot_->setName("tower");
+        addChild(towerRoot_);
+
+        ballsRoot_ = make_shared<Node>();
+        ballsRoot_->setName("balls");
+        addChild(ballsRoot_);
+
+        firedL_ = cannon_->fired.listen(this, &GameScene::onFired);
+
+        levels_ = makeLevels();
+        toTitle();
+    }
+
+    void update() override {
+        float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
+        defaultWorld().update(dt);
+
+        // manual aiming with held arrow keys
+        if (phase_ == Phase::Playing && !autopilot_) {
+            float aimRate = 0.9f;
+            if (held_[KEY_LEFT])  cannon_->setYaw(cannon_->getYaw() + aimRate * dt);
+            if (held_[KEY_RIGHT]) cannon_->setYaw(cannon_->getYaw() - aimRate * dt);
+            if (held_[KEY_UP])    cannon_->setPitch(cannon_->getPitch() + aimRate * dt);
+            if (held_[KEY_DOWN])  cannon_->setPitch(cannon_->getPitch() - aimRate * dt);
+        }
+
+        // autopilot: attract demo on the title, optional CPU player in game
+        if (phase_ == Phase::Title || (phase_ == Phase::Playing && autopilot_)) {
+            updateAutopilot(dt);
+        }
+
+        // out of shots, nothing in flight -> wait for the dust to settle
+        if (phase_ == Phase::Playing && shots_ <= 0 && aliveBalls() == 0 &&
+            !cannon_->isCharging() && blocksLeft_ > 0) {
+            settle_ += dt;
+            if (settle_ > 2.8f) gameOver();
+        } else {
+            settle_ = 0.0f;
+        }
+
+        // attract demo: when the demo tower is cleared, rebuild it
+        if (phase_ == Phase::Title && blocksLeft_ <= 0) {
+            demoReload_ += dt;
+            if (demoReload_ > 2.0f) {
+                demoReload_ = 0;
+                loadLevel(levelIdx_);
+            }
+        }
+    }
+
+    void draw() override {
+        // ground grid
+        setColor(0.22f, 0.23f, 0.30f);
+        const float ext = 14.0f, stp = 1.0f;
+        for (float a = -ext; a <= ext + 0.001f; a += stp) {
+            drawLine(Vec3(a, 0.005f, -ext), Vec3(a, 0.005f, ext));
+            drawLine(Vec3(-ext, 0.005f, a), Vec3(ext, 0.005f, a));
+        }
+    }
+
+protected:
+    void beginDraw() override {
+        cam_.begin();
+        setCameraPosition(cam_.getPosition());
+    }
+
+    void endDraw() override {
+        cam_.end();
+    }
+
+private:
+    // --- internals ------------------------------------------------------------
+    void loadLevel(size_t idx) {
+        for (auto& c : towerRoot_->getChildren()) c->destroy();
+        for (auto& c : ballsRoot_->getChildren()) c->destroy();
+        blockL_.clear();
+
+        const LevelDef& def = levels_[idx];
+        for (const auto& bd : def.blocks) {
+            auto block = make_shared<Block>(bd);
+            blockL_.push_back(block->busted.listen(this, &GameScene::onBlockBusted));
+            towerRoot_->addChild(block);
+        }
+        shots_ = def.shots;
+        blocksTotal_ = (int)def.blocks.size();
+        blocksLeft_ = blocksTotal_;
+        lastBonus_ = 0;
+        settle_ = 0;
+        aiAiming_ = false;
+        aiTimer_ = 0;
+        cannon_->cancelCharge();
+        cannon_->setYawDeg(0);
+        cannon_->setPitchDeg(20);
+    }
+
+    void onFired(Cannon::FireArgs& args) {
+        ballsRoot_->addChild(make_shared<Cannonball>(args.pos, args.velocity));
+        if (phase_ == Phase::Playing) {
+            shots_--;
+            settle_ = 0;
+        }
+    }
+
+    void onBlockBusted(int& points) {
+        blocksLeft_--;
+        if (phase_ == Phase::Playing) {
+            score_ += points;
+            hiScore_ = std::max(hiScore_, score_);
+            if (blocksLeft_ <= 0) levelClear();
+        }
+    }
+
+    void levelClear() {
+        phase_ = Phase::LevelClear;
+        lastBonus_ = shots_ * 200;
+        score_ += lastBonus_;
+        hiScore_ = std::max(hiScore_, score_);
+        jukebox().clearJingle.play();
+        callAfter(3.0, [this]() {
+            if (phase_ != Phase::LevelClear) return;
+            if (levelIdx_ + 1 < levels_.size()) {
+                levelIdx_++;
+                loadLevel(levelIdx_);
+                phase_ = Phase::Playing;
+                jukebox().startJingle.play();
+            } else {
+                allClear();
+            }
+        });
+    }
+
+    void gameOver() {
+        phase_ = Phase::GameOver;
+        jukebox().bgm.stop();
+        jukebox().overJingle.play();
+        callAfter(4.5, [this]() {
+            if (phase_ == Phase::GameOver) toTitle();
+        });
+    }
+
+    void allClear() {
+        phase_ = Phase::AllClear;
+        jukebox().bgm.stop();
+        jukebox().fanfare.play();
+    }
+
+    // --- autopilot -------------------------------------------------------------
+    void updateAutopilot(float dt) {
+        if (phase_ == Phase::Playing && shots_ <= 0) return;
+
+        if (!aiAiming_) {
+            aiTimer_ += dt;
+            if (aiTimer_ < aiInterval_) return;
+            if (pickTargetAndSolve()) {
+                aiAiming_ = true;
+            } else {
+                aiTimer_ = 0;   // nothing to shoot at yet
+            }
+            return;
+        }
+
+        // ease the barrel toward the solution, then fire
+        float rate = 2.2f * dt;
+        float y = cannon_->getYaw(), p = cannon_->getPitch();
+        y += clamp(aiYaw_ - y, -rate, rate);
+        p += clamp(aiPitch_ - p, -rate, rate);
+        cannon_->setYaw(y);
+        cannon_->setPitch(p);
+        if (fabsf(aiYaw_ - y) < 0.008f && fabsf(aiPitch_ - p) < 0.008f) {
+            requestFire(aiPower_);
+            aiAiming_ = false;
+            aiTimer_ = 0;
+            aiInterval_ = random(1.8f, 2.6f);
+        }
+    }
+
+    bool pickTargetAndSolve() {
+        // collect alive, un-busted blocks
+        vector<Block*> alive;
+        for (auto& c : towerRoot_->getChildren()) {
+            if (c->isDead()) continue;
+            auto* b = dynamic_cast<Block*>(c.get());
+            if (b && !b->isBusted()) alive.push_back(b);
+        }
+        if (alive.empty()) return false;
+        // prefer low blocks: hitting the base topples whole stacks
+        sort(alive.begin(), alive.end(), [](Block* a, Block* b) {
+            return a->getGlobalPos().y < b->getGlobalPos().y;
+        });
+        int span = std::max(1, (int)alive.size() / 2);
+        Block* target = alive[(int)random(0.0f, (float)span - 0.001f)];
+
+        Vec3 base = cannon_->getGlobalPos() + Vec3(0, Cannon::PIVOT_H, 0);
+        Vec3 tpos = target->getGlobalPos();
+        float g = 12.0f;
+        float yawSol = atan2f(-(tpos.x - base.x), -(tpos.z - base.z));
+
+        // the CPU likes ~80% power: flat-ish, fast shots shove blocks off the
+        // platform (slow lobs drop onto blocks from above and pin them down).
+        // Never 0.93+: a MAX shot (and its loud sound) is the player's reward.
+        for (float power : {0.8f, 0.88f, 0.7f, 0.92f, 0.6f}) {
+            float v = Cannon::MIN_SPEED + power * (Cannon::MAX_SPEED - Cannon::MIN_SPEED);
+            // two passes: solve from the pivot, then re-solve from the actual
+            // muzzle (the ball spawns BARREL_LEN along the barrel — ignoring
+            // that overshoots small targets by ~0.3 m at range)
+            Vec3 from = base;
+            float pitch = 0.0f;
+            bool ok = false;
+            for (int pass = 0; pass < 2; pass++) {
+                Vec3 d3 = tpos - from;
+                float dist = sqrtf(d3.x * d3.x + d3.z * d3.z);
+                float h = d3.y;
+                float disc = v * v * v * v - g * (g * dist * dist + 2.0f * h * v * v);
+                if (disc < 0) { ok = false; break; }
+                pitch = atanf((v * v - sqrtf(disc)) / (g * dist));
+                ok = (pitch >= 0.0f && pitch <= TAU * 0.18f);
+                if (!ok) break;
+                Vec3 dir(-sinf(yawSol) * cosf(pitch), sinf(pitch), -cosf(yawSol) * cosf(pitch));
+                from = base + dir * Cannon::BARREL_LEN;
+            }
+            if (!ok) continue;
+            // sniper mode on the last stragglers: no aim noise
+            float n = (blocksLeft_ <= 2) ? 0.0f : 1.0f;
+            aiYaw_   = yawSol + n * random(-0.008f, 0.008f);
+            aiPitch_ = pitch + n * random(-0.006f, 0.006f);
+            aiPower_ = clamp(power + n * random(-0.02f, 0.02f), 0.0f, 0.92f);
+            return true;
+        }
+        // no clean solution: lob it hard (capped below the MAX-shot zone)
+        aiYaw_ = yawSol;
+        aiPitch_ = deg2rad(35.0f);
+        aiPower_ = 0.92f;
+        return true;
+    }
+
+    // --- members ---------------------------------------------------------------
+    EasyCam cam_;
+    Light keyLight_, fillLight_;
+
+    shared_ptr<Cannon> cannon_;
+    shared_ptr<Node>   towerRoot_, ballsRoot_;
+    EventListener      firedL_;
+    vector<EventListener> blockL_;
+
+    vector<LevelDef> levels_;
+    size_t levelIdx_ = 0;
+    Phase  phase_ = Phase::Title;
+    int    score_ = 0;
+    int    hiScore_ = 0;
+    int    shots_ = 0;
+    int    blocksTotal_ = 0;
+    int    blocksLeft_ = 0;
+    int    lastBonus_ = 0;
+    float  settle_ = 0;
+    float  demoReload_ = 0;
+    bool   autopilot_ = false;
+
+    std::map<int, bool> held_;   // explicit std:: (tc::map collides)
+
+    bool  aiAiming_ = false;
+    float aiTimer_ = 0, aiInterval_ = 2.0f;
+    float aiYaw_ = 0, aiPitch_ = 0, aiPower_ = 0.7f;
+};
