@@ -259,8 +259,6 @@ public:
             drawLine(Vec3(-ext, 0.005f, a), Vec3(ext, 0.005f, a));
         }
 
-        // aim guide: dotted parabola of a MAX-power shot (player aiming only)
-        if (phase_ == Phase::Playing && !autopilot_) drawTrajectory();
     }
 
 protected:
@@ -270,13 +268,18 @@ protected:
     }
 
     void endDraw() override {
+        // aim guide: drawn AFTER all children so the dots overlay the blocks
+        // (they don't depth-test, so drawing first would let blocks paint over
+        // them), but still inside the camera scope
+        if (phase_ == Phase::Playing && !autopilot_) drawTrajectory();
         cam_.end();
     }
 
 private:
     // --- internals ------------------------------------------------------------
     // Sample the MAX-power ballistic arc and place small spheres at equal
-    // arc-length intervals (a dotted line in 3D).
+    // arc-length intervals (a dotted line in 3D), stopping at the first
+    // physics hit (raycast per segment) with an impact marker.
     void drawTrajectory() {
         if (dotMesh_.getNumVertices() == 0) dotMesh_ = createSphere(0.06f, 10);
         Vec3  p = cannon_->muzzlePos();
@@ -285,14 +288,28 @@ private:
         // additive: the dots glow against any background
         setBlendMode(BlendMode::Add);
         setColor(0.85f, 0.75f, 0.35f, 0.65f);
-        const float step = 0.01f;     // integration step (s)
+        const float step = 0.02f;     // integration step (s)
         const float gap  = 0.55f;     // distance between dots (m)
         float acc = gap;              // place the first dot immediately
         Vec3  prev = p;
         int   dots = 0;
-        for (float t = 0; t < 3.0f && dots < 30; t += step) {
+        for (float t = step; t < 3.0f && dots < 48; t += step) {
             Vec3 cur = p + v * t + Vec3(0, 0.5f * g * t * t, 0);
-            acc += (cur - prev).length();
+            Vec3 seg = cur - prev;
+            float len = seg.length();
+            if (len > 1e-6f) {
+                if (auto h = defaultWorld().raycast(prev, seg / len, len)) {
+                    // impact marker: one brighter, bigger dot, then stop
+                    setColor(1.0f, 0.85f, 0.45f, 0.9f);
+                    pushMatrix();
+                    translate(h.point);
+                    scale(1.8f, 1.8f, 1.8f);
+                    dotMesh_.draw();
+                    popMatrix();
+                    break;
+                }
+            }
+            acc += len;
             prev = cur;
             if (acc >= gap) {
                 acc = 0;
@@ -307,8 +324,7 @@ private:
         setColor(1.0f);
         // restore the DEPTH-WRITING 3D pipeline, not just a blend mode: every
         // blend pipeline (Alpha included) has depth write disabled, so leaving
-        // one loaded makes the rest of the scene draw without depth testing
-        // (back faces overwrite front faces)
+        // one loaded makes anything drawn after composite in submission order
         setBlendMode(BlendMode::Alpha);
         if (internal::pipeline3dInitialized) sgl_load_pipeline(internal::pipeline3d);
     }
