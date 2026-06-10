@@ -156,13 +156,7 @@ private:
             drawRect(gx, gy, gw * p, gh);
         }
 
-        // MAX shot banner
-        float mb = c->getMaxBanner();
-        if (mb > 0.0f) {
-            float pulse = 3.0f + 0.6f * sinf(getElapsedTimef() * 30.0f);
-            center("MAX SHOT!!", H * 0.30f, pulse,
-                   Color(1.0f, 0.85f, 0.25f, std::min(1.0f, mb * 2.0f)));
-        }
+        // (MAX shots are celebrated by sound only — an on-screen banner felt spammy)
     }
 
     void drawLevelClear() {

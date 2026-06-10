@@ -65,7 +65,6 @@ public:
     void cancelCharge() { charging_ = false; power_ = 0.0f; }
     bool  isCharging() const { return charging_; }
     float getPower() const { return power_; }
-    float getMaxBanner() const { return maxBanner_; }   // >0 while "MAX!!" shows
 
     // --- firing -------------------------------------------------------------
     void fire(float power) {
@@ -76,12 +75,8 @@ public:
         FireArgs args{muzzlePos(), aimDir() * speed};
         recoil_ = 1.0f;
         flash_ = maxShot ? 1.6f : 1.0f;
-        if (maxShot) {
-            maxBanner_ = 1.2f;
-            jukebox().maxFire.play();
-        } else {
-            jukebox().fire.play();
-        }
+        if (maxShot) jukebox().maxFire.play();   // sound-only celebration
+        else         jukebox().fire.play();
         fired.notify(args);
     }
 
@@ -110,7 +105,6 @@ public:
         }
         recoil_ = std::max(0.0f, recoil_ - dt * 5.0f);
         flash_  = std::max(0.0f, flash_ - dt * 7.0f);
-        maxBanner_ = std::max(0.0f, maxBanner_ - dt);
     }
 
     void draw() override {
@@ -156,7 +150,6 @@ private:
     float chargeDir_ = 1.0f;
     float recoil_ = 0.0f;
     float flash_ = 0.0f;
-    float maxBanner_ = 0.0f;
 
     Mesh barrel_, body_, pivot_;
     Material baseMat_, steelMat_;
