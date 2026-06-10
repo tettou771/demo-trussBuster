@@ -9,6 +9,8 @@ using namespace tc;
 // One semi-transparent on-screen button. Press/release is forwarded to the
 // scene as the equivalent key, so touch and keyboard share one code path.
 // Works through touch-as-mouse (first finger = mouse) — no touch API needed.
+// Drawn as a squircle (superellipse, n=4): one convex polygon, so the
+// translucent fill has no overlap seams.
 class TouchButton : public RectNode {
 public:
     TouchButton(int key, const string& glyph, float glyphScale, GameScene* scene)
@@ -24,30 +26,51 @@ public:
     }
 
     void draw() override {
+        if (shapeW_ != getWidth() || shapeH_ != getHeight()) buildShape();
         setBlendMode(BlendMode::Alpha);
         fill();
         setColor(1.0f, 1.0f, 1.0f, pressed_ ? 0.34f : 0.13f);
-        drawRect(0, 0, getWidth(), getHeight());
+        shape_.drawFill();
         setColor(1.0f, 1.0f, 1.0f, pressed_ ? 0.95f : 0.55f);
-        float gw = glyph_.size() * 8.0f * glyphScale_;
-        drawBitmapString(glyph_, (getWidth() - gw) * 0.5f,
-                         (getHeight() - 8.0f * glyphScale_) * 0.5f, glyphScale_);
+        setTextAlign(Direction::Center, Direction::Center);
+        drawBitmapString(glyph_, getWidth() * 0.5f, getHeight() * 0.5f, glyphScale_);
+        setTextAlign(Direction::Left, Direction::Top);
     }
 
 protected:
     bool onMousePress(const MouseEventArgs&) override {
         pressed_ = true;
         scene_->handleKey(key_, true);
-        return true;   // consume: don't orbit the camera under a button
+        return true;   // consume
     }
 
 private:
+    void buildShape() {
+        shapeW_ = getWidth();
+        shapeH_ = getHeight();
+        shape_.clear();
+        float a = shapeW_ * 0.5f, b = shapeH_ * 0.5f;
+        const int   SEG = 48;
+        const float n   = 4.0f;   // superellipse exponent (squircle)
+        for (int i = 0; i < SEG; i++) {
+            float t = (float)i / SEG * TAU;
+            float c = cosf(t), s = sinf(t);
+            float x = a + a * copysignf(powf(fabsf(c), 2.0f / n), c);
+            float y = b + b * copysignf(powf(fabsf(s), 2.0f / n), s);
+            if (i == 0) shape_.moveTo(x, y);
+            else        shape_.lineTo(x, y);
+        }
+        shape_.close();
+    }
+
     int           key_;
     string        glyph_;
     float         glyphScale_;
     GameScene*    scene_;
     bool          pressed_ = false;
     EventListener releaseL_;
+    Path          shape_;
+    float         shapeW_ = -1, shapeH_ = -1;
 };
 
 // Mobile control overlay: arrow pad bottom-left, fire button bottom-right.
@@ -64,29 +87,29 @@ public:
             return b;
         };
         const float s = BTN;
-        up_    = mk(KEY_UP,    "^",  s, s, 3.0f);
-        down_  = mk(KEY_DOWN,  "v",  s, s, 3.0f);
-        left_  = mk(KEY_LEFT,  "<",  s, s, 3.0f);
-        right_ = mk(KEY_RIGHT, ">",  s, s, 3.0f);
-        fire_  = mk(KEY_SPACE, "FIRE", 150, 120, 3.0f);
+        up_    = mk(KEY_UP,    "^",  s, s, 2.0f);
+        down_  = mk(KEY_DOWN,  "v",  s, s, 2.0f);
+        left_  = mk(KEY_LEFT,  "<",  s, s, 2.0f);
+        right_ = mk(KEY_RIGHT, ">",  s, s, 2.0f);
+        fire_  = mk(KEY_SPACE, "FIRE", 84, 60, 1.5f);
     }
 
     void update() override {
         // re-layout every frame: window size changes on rotation / resize
         float H = (float)getWindowHeight();
         float W = (float)getWindowWidth();
-        const float s = BTN, gap = 8;
-        float cx = 36 + s * 1.5f + gap;          // dpad center
-        float cy = H - 36 - s * 1.5f - gap;
+        const float s = BTN, gap = 5;
+        float cx = 24 + s * 1.5f + gap;          // dpad center
+        float cy = H - 24 - s * 1.5f - gap;
         up_->setPos(cx - s * 0.5f, cy - s * 1.5f - gap);
         down_->setPos(cx - s * 0.5f, cy + s * 0.5f + gap);
         left_->setPos(cx - s * 1.5f - gap, cy - s * 0.5f);
         right_->setPos(cx + s * 0.5f + gap, cy - s * 0.5f);
-        fire_->setPos(W - 150 - 30, H - 120 - 40);
+        fire_->setPos(W - 84 - 24, H - 60 - 28);
     }
 
 private:
-    static constexpr float BTN = 76;
+    static constexpr float BTN = 40;
     GameScene* scene_;
     shared_ptr<TouchButton> up_, down_, left_, right_, fire_;
 };
