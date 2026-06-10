@@ -129,6 +129,13 @@ public:
 
     void setAutopilot(bool on) { autopilot_ = on; aiTimer_ = 0; aiAiming_ = false; }
 
+    // replace a level definition at runtime (MCP stage-design workflow:
+    // prototype layouts as level 1 without rebuilding, then bake into Levels.h)
+    void setLevelDef(int oneBased, LevelDef def) {
+        size_t i = (size_t)clamp(oneBased - 1, 0, (int)levels_.size() - 1);
+        levels_[i] = std::move(def);
+    }
+
     // jump straight into a level (debug / MCP)
     void gotoLevel(int oneBased) {
         levelIdx_ = (size_t)clamp(oneBased - 1, 0, (int)levels_.size() - 1);
@@ -219,7 +226,7 @@ public:
 
         // manual aiming with held arrow keys
         if (phase_ == Phase::Playing && !autopilot_) {
-            float aimRate = 0.3f;   // rad/s — slow enough for fine aiming
+            float aimRate = 0.2f;   // rad/s — slow enough for fine aiming
             if (held_[KEY_LEFT])  cannon_->setYaw(cannon_->getYaw() + aimRate * dt);
             if (held_[KEY_RIGHT]) cannon_->setYaw(cannon_->getYaw() - aimRate * dt);
             if (held_[KEY_UP])    cannon_->setPitch(cannon_->getPitch() + aimRate * dt);
@@ -285,9 +292,10 @@ private:
         Vec3  p = cannon_->muzzlePos();
         Vec3  v = cannon_->aimDir() * Cannon::MAX_SPEED;
         float g = defaultWorld().getGravity().y;   // negative
-        // additive: the dots glow against any background
-        setBlendMode(BlendMode::Add);
-        setColor(0.85f, 0.75f, 0.35f, 0.65f);
+        // default (depth-tested) pipeline: dots passing BEHIND blocks are
+        // correctly hidden — drawing them additive/depth-less made the guide
+        // float confusingly over everything
+        setColor(1.0f, 0.9f, 0.45f, 0.6f);
         const float step = 0.02f;     // integration step (s)
         const float gap  = 0.55f;     // distance between dots (m)
         float acc = gap;              // place the first dot immediately
@@ -322,11 +330,6 @@ private:
             if (cur.y < 0.05f) break;
         }
         setColor(1.0f);
-        // restore the DEPTH-WRITING 3D pipeline, not just a blend mode: every
-        // blend pipeline (Alpha included) has depth write disabled, so leaving
-        // one loaded makes anything drawn after composite in submission order
-        setBlendMode(BlendMode::Alpha);
-        if (internal::pipeline3dInitialized) sgl_load_pipeline(internal::pipeline3d);
     }
 
     void loadLevel(size_t idx) {

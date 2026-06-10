@@ -42,8 +42,15 @@ public:
     void update() override {
         float dt = (float)getDeltaTime();
         if (!busted_) {
-            // fell off the platform -> busted
-            if (getGlobalPos().y < PLATFORM_TOP - 0.38f) bust();
+            // busted when it leaves the platform: below its top, OR outside
+            // its footprint near ground level (tall blocks lying on the
+            // ground can keep their center above the simple y threshold)
+            Vec3 gp = getGlobalPos();
+            bool below = gp.y < PLATFORM_TOP - 0.38f;
+            bool outside = (fabsf(gp.x) > PLATFORM_HALF_W + 0.15f ||
+                            gp.z > PLATFORM_Z_NEAR + 0.15f ||
+                            gp.z < PLATFORM_Z_FAR - 0.15f) && gp.y < 0.95f;
+            if (below || outside) bust();
         } else {
             // pop: shrink fast, then die
             pop_ -= dt * 3.2f;

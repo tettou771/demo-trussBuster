@@ -168,5 +168,35 @@ void tcApp::registerMcpTools() {
             scene_->setAutopilot(a.value("on", false));
             return scene_->stateJson();
         });
+
+    // Stage-design workflow: send a layout as JSON, play it immediately as
+    // level 1, iterate without rebuilding, then bake the result into Levels.h.
+    mcp::tool("load_custom_level",
+              "Replace level 1 with a custom layout and start it. level = "
+              "{name, shots, blocks:[{pos:[x,y,z], size:[w,h,d], color:[r,g,b], points}]} "
+              "(platform top is y=1.0; block resting on it has pos.y = 1 + h/2)")
+        .arg<json>("level", "level definition object")
+        .bind([this](const json& a) {
+            const json& L = a.at("level");
+            LevelDef def;
+            def.name  = L.value("name", "CUSTOM");
+            def.shots = L.value("shots", 10);
+            for (const auto& b : L.at("blocks")) {
+                BlockDef bd;
+                const auto& p = b.at("pos");
+                const auto& s = b.at("size");
+                bd.pos  = Vec3(p[0].get<float>(), p[1].get<float>(), p[2].get<float>());
+                bd.size = Vec3(s[0].get<float>(), s[1].get<float>(), s[2].get<float>());
+                if (b.contains("color")) {
+                    const auto& c = b["color"];
+                    bd.color = Color(c[0].get<float>(), c[1].get<float>(), c[2].get<float>());
+                }
+                bd.points = b.value("points", 100);
+                def.blocks.push_back(bd);
+            }
+            scene_->setLevelDef(1, def);
+            scene_->gotoLevel(1);
+            return scene_->stateJson();
+        });
 #endif
 }
