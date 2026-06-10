@@ -27,6 +27,10 @@ public:
     }
     Color getColor() const { return material_.getBaseColor(); }
 
+    // drop the cached mesh; it rebuilds from the (possibly new) collider
+    // shape on the next draw
+    void invalidateMesh() { mesh_ = Mesh(); }
+
     using Super = Mod;
     TC_REFLECT(FlatRenderer)
         TC_PROPERTY(color, getColor, setColor)

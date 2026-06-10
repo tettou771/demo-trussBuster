@@ -33,24 +33,32 @@ public:
         : pos_(pos), size_(size), color_(color) {}
 
     Vec3 getSize() const { return size_; }
+    void setSize(const Vec3& s) {
+        size_ = s;
+        if (!renderer_) return;   // before setup: just store
+        addMod<RigidBody>(ColliderShape::box(s), BodyType::Static);
+        renderer_->invalidateMesh();
+    }
     bool getFalse() const { return false; }
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
 
     using Super = Node;
     TC_REFLECT(StaticProp)
-        TC_PROPERTY_RO(size, getSize)
+        TC_PROPERTY(size, getSize, setSize)
         TC_PROPERTY(deleteBlock, getFalse, doDelete)
     TC_REFLECT_END
 
     void setup() override {
         setPos(pos_);
         addMod<RigidBody>(ColliderShape::box(size_), BodyType::Static);
-        addMod<FlatRenderer>()->setColor(color_);
+        renderer_ = addMod<FlatRenderer>();
+        renderer_->setColor(color_);
     }
 
 private:
     Vec3 pos_, size_;
     Color color_;
+    FlatRenderer* renderer_ = nullptr;
 };
 
 // Parent node for level blocks. Reflected spawn buttons (checkbox = button):
@@ -260,8 +268,9 @@ public:
         addLight(fillLight_);
 
         // narrow depth: hit blocks should fall off the back edge easily
+        // common static-prop color (matches level walls — "fixed scenery" look)
         auto platform = make_shared<StaticProp>(Vec3(0, 0.5f, -6.0f), Vec3(6.4f, 1, 4.2f),
-                                                Color(0.34f, 0.36f, 0.46f));
+                                                wallColor());
         platform->setName("platform");
         addChild(platform);
 

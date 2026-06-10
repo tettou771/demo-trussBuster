@@ -17,7 +17,7 @@ struct BlockDef {
 };
 
 // standard look for static obstacles (dark, reads as scenery)
-inline Color wallColor() { return Color(0.20f, 0.21f, 0.28f); }
+inline Color wallColor() { return Color(0.278f, 0.294f, 0.353f); }
 
 // global stage-edit flag: while on, physics is paused and blocks must not
 // bust themselves (they're being dragged around with the gizmo)
@@ -152,9 +152,9 @@ inline vector<LevelDef> makeLevels() {
     // Mechanics verified by MCP playtest (see load_custom_level workflow).
     // ------------------------------------------------------------------
 
-    {   // Level 6: thread the shield gap for the gold pair; the corner
-        // blues hide behind STATIC shade walls — direct fire is wasted, you
-        // must shoot the wide red pusher next to each so it sweeps them off
+    {   // Level 6: thread the shield gap for the gold pair; tall STATIC
+        // pillars at the front edge shade the corner blues from direct fire —
+        // carom a shield slab into them (edge hit) instead
         LevelDef l{"NEEDLE EYE", 6, {}};
         Color shield(0.85f, 0.45f, 0.40f), pairC(0.95f, 0.85f, 0.30f);
         Color single(0.55f, 0.80f, 0.95f);
@@ -163,10 +163,8 @@ inline vector<LevelDef> makeLevels() {
         l.blocks.push_back({Vec3(-0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         l.blocks.push_back({Vec3( 0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         for (float sgn : {-1.0f, 1.0f}) {
-            l.blocks.push_back({Vec3(sgn * 2.3f, 1.95f, -6.9f), Vec3(0.9f, 1.9f, 0.25f),
+            l.blocks.push_back({Vec3(sgn * 2.0f, 1.95f, -4.0f), Vec3(0.9f, 1.9f, 0.25f),
                                 wallColor(), 0, true});
-            l.blocks.push_back({Vec3(sgn * 1.5f, 1.5f, -7.05f), Vec3(1.5f, 1.0f, 0.3f),
-                                shield, 150});
             l.blocks.push_back({Vec3(sgn * 2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f),
                                 single, 100});
         }
