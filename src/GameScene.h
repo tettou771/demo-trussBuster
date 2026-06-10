@@ -219,7 +219,7 @@ public:
 
         // manual aiming with held arrow keys
         if (phase_ == Phase::Playing && !autopilot_) {
-            float aimRate = 0.9f;
+            float aimRate = 0.3f;   // rad/s — slow enough for fine aiming
             if (held_[KEY_LEFT])  cannon_->setYaw(cannon_->getYaw() + aimRate * dt);
             if (held_[KEY_RIGHT]) cannon_->setYaw(cannon_->getYaw() - aimRate * dt);
             if (held_[KEY_UP])    cannon_->setPitch(cannon_->getPitch() + aimRate * dt);
