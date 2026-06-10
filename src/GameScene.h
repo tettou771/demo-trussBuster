@@ -186,7 +186,7 @@ public:
 
         // narrow depth: hit blocks should fall off the back edge easily
         auto platform = make_shared<StaticProp>(Vec3(0, 0.5f, -6.0f), Vec3(6.4f, 1, 4.2f),
-                                                Color(0.40f, 0.42f, 0.52f));
+                                                Color(0.34f, 0.36f, 0.46f));
         platform->setName("platform");
         addChild(platform);
 
@@ -304,8 +304,13 @@ private:
             }
             if (cur.y < 0.05f) break;
         }
-        setBlendMode(BlendMode::Alpha);
         setColor(1.0f);
+        // restore the DEPTH-WRITING 3D pipeline, not just a blend mode: every
+        // blend pipeline (Alpha included) has depth write disabled, so leaving
+        // one loaded makes the rest of the scene draw without depth testing
+        // (back faces overwrite front faces)
+        setBlendMode(BlendMode::Alpha);
+        if (internal::pipeline3dInitialized) sgl_load_pipeline(internal::pipeline3d);
     }
 
     void loadLevel(size_t idx) {

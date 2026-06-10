@@ -22,7 +22,7 @@ public:
     FlatRenderer& setColor(const Color& c) {
         material_.setBaseColor(c);
         material_.setEmissive(c);
-        material_.setEmissiveStrength(0.32f);
+        material_.setEmissiveStrength(0.12f);
         return *this;
     }
     Color getColor() const { return material_.getBaseColor(); }
