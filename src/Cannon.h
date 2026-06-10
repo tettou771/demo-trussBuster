@@ -85,8 +85,13 @@ public:
         barrel_ = createCylinder(0.13f, BARREL_LEN, 18);
         body_   = createBox(0.95f, 0.42f, 0.95f);
         pivot_  = createSphere(0.27f, 16);
+        // emissive floor = fake ambient (see FlatRenderer.h)
         baseMat_.setBaseColor(Color(0.16f, 0.17f, 0.22f));
+        baseMat_.setEmissive(Color(0.16f, 0.17f, 0.22f));
+        baseMat_.setEmissiveStrength(0.32f);
         steelMat_.setBaseColor(Color(0.35f, 0.38f, 0.45f));
+        steelMat_.setEmissive(Color(0.35f, 0.38f, 0.45f));
+        steelMat_.setEmissiveStrength(0.32f);
     }
 
     void update() override {

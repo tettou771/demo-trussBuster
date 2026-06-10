@@ -17,7 +17,14 @@ class FlatRenderer : public Mod {
     friend class trussc::Node;
 
 public:
-    FlatRenderer& setColor(const Color& c) { material_.setBaseColor(c); return *this; }
+    // baseColor + a matching emissive floor (fake ambient: CPU lighting has
+    // no ambient term, so faces away from every light would go pitch black)
+    FlatRenderer& setColor(const Color& c) {
+        material_.setBaseColor(c);
+        material_.setEmissive(c);
+        material_.setEmissiveStrength(0.32f);
+        return *this;
+    }
     Color getColor() const { return material_.getBaseColor(); }
 
     using Super = Mod;

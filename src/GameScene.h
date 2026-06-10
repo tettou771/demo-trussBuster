@@ -170,7 +170,7 @@ public:
         // the aiming challenge, and an orbiting camera would also consume the
         // clicks meant for the touch buttons
         cam_.setTarget(0.0f, 1.4f, -1.5f);
-        cam_.setDistance(13.5f);
+        cam_.setDistance(16.2f);   // pulled back ~20%: whole stage + barrel visible
         cam_.setAzimuth(0.22f);
         cam_.setElevation(0.30f);
 
@@ -186,7 +186,7 @@ public:
 
         // narrow depth: hit blocks should fall off the back edge easily
         auto platform = make_shared<StaticProp>(Vec3(0, 0.5f, -6.0f), Vec3(6.4f, 1, 4.2f),
-                                                Color(0.30f, 0.32f, 0.40f));
+                                                Color(0.40f, 0.42f, 0.52f));
         platform->setName("platform");
         addChild(platform);
 
@@ -258,6 +258,9 @@ public:
             drawLine(Vec3(a, 0.005f, -ext), Vec3(a, 0.005f, ext));
             drawLine(Vec3(-ext, 0.005f, a), Vec3(ext, 0.005f, a));
         }
+
+        // aim guide: dotted parabola of a MAX-power shot (player aiming only)
+        if (phase_ == Phase::Playing && !autopilot_) drawTrajectory();
     }
 
 protected:
@@ -272,6 +275,39 @@ protected:
 
 private:
     // --- internals ------------------------------------------------------------
+    // Sample the MAX-power ballistic arc and place small spheres at equal
+    // arc-length intervals (a dotted line in 3D).
+    void drawTrajectory() {
+        if (dotMesh_.getNumVertices() == 0) dotMesh_ = createSphere(0.06f, 10);
+        Vec3  p = cannon_->muzzlePos();
+        Vec3  v = cannon_->aimDir() * Cannon::MAX_SPEED;
+        float g = defaultWorld().getGravity().y;   // negative
+        // additive: the dots glow against any background
+        setBlendMode(BlendMode::Add);
+        setColor(0.85f, 0.75f, 0.35f, 0.65f);
+        const float step = 0.01f;     // integration step (s)
+        const float gap  = 0.55f;     // distance between dots (m)
+        float acc = gap;              // place the first dot immediately
+        Vec3  prev = p;
+        int   dots = 0;
+        for (float t = 0; t < 3.0f && dots < 30; t += step) {
+            Vec3 cur = p + v * t + Vec3(0, 0.5f * g * t * t, 0);
+            acc += (cur - prev).length();
+            prev = cur;
+            if (acc >= gap) {
+                acc = 0;
+                dots++;
+                pushMatrix();
+                translate(cur);
+                dotMesh_.draw();
+                popMatrix();
+            }
+            if (cur.y < 0.05f) break;
+        }
+        setBlendMode(BlendMode::Alpha);
+        setColor(1.0f);
+    }
+
     void loadLevel(size_t idx) {
         for (auto& c : towerRoot_->getChildren()) c->destroy();
         for (auto& c : ballsRoot_->getChildren()) c->destroy();
@@ -440,6 +476,7 @@ private:
     Light keyLight_, fillLight_;
 
     shared_ptr<Cannon> cannon_;
+    Mesh               dotMesh_;   // trajectory guide dot
     shared_ptr<Node>   towerRoot_, ballsRoot_;
     EventListener      firedL_;
     vector<EventListener> blockL_;

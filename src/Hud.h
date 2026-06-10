@@ -43,6 +43,9 @@ private:
     // bitmap font is 8px monospace at scale 1
     static float textW(const string& s, float scale) { return s.size() * 8.0f * scale; }
 
+    // responsive text factor: 1.0 at >=1100px wide, shrinking to 0.6 on phones
+    float uiScale() const { return clamp(getWidth() / 1100.0f, 0.6f, 1.0f); }
+
     void center(const string& s, float y, float scale, const Color& c) {
         setColor(c);
         drawBitmapString(s, (getWidth() - textW(s, scale)) * 0.5f, y, scale);
@@ -72,16 +75,18 @@ private:
         float t = getElapsedTimef();
         float W = getWidth();
 
-        // logo with a slow color cycle
+        // logo with a slow color cycle; never wider than the window
         Color logoCol = Color::fromHSB(fmodf(t * 0.07f, 1.0f), 0.45f, 1.0f);
-        float logoScale = (W < 760) ? 5.0f : 8.0f;   // fit narrow (phone) windows
-        centerShadow("TRUSS BUSTER", 150, logoScale, logoCol);
+        float logoScale = std::min(8.0f, (W - 40) / (12 * 8.0f));   // 12 chars
+        float H = getHeight();
+        centerShadow("TRUSS BUSTER", H * 0.18f, logoScale, logoCol);
 
         if (fmodf(t, 1.2f) < 0.75f)
             centerShadow(mobile_ ? "TAP TO START" : "PRESS ENTER TO START",
-                         330, 3, Color(1.0f, 0.95f, 0.6f));
+                         H * 0.42f, 3.0f * uiScale(), Color(1.0f, 0.95f, 0.6f));
 
-        center("HI SCORE  " + pad(scene_->getHiScore()), 400, 2, Color(0.95f, 0.6f, 0.5f));
+        center("HI SCORE  " + pad(scene_->getHiScore()), H * 0.51f, 2.0f * uiScale(),
+               Color(0.95f, 0.6f, 0.5f));
 
         // attract-mode tag
         if (fmodf(t, 0.8f) < 0.5f) {
@@ -101,47 +106,58 @@ private:
 
     void drawPlaying() {
         float W = getWidth(), H = getHeight();
+        // responsive: shrink HUD text on narrow (phone) windows...
+        float k = uiScale();
+        // ...and on REALLY narrow ones, move BLOCKS out of the top-center
+        bool narrow = W < 700;
+        float ts = 2.0f * k;                 // standard HUD text scale
+        float lineH = 13.0f * ts;            // row pitch for stacked lines
 
         // level (top-left)
         setColor(0.95f, 0.95f, 1.0f);
-        drawBitmapString("LEVEL " + to_string(scene_->getLevelNumber()), 24, 22, 2.0f);
+        drawBitmapString("LEVEL " + to_string(scene_->getLevelNumber()), 24, 22, ts);
         setColor(0.65f, 0.8f, 0.95f);
-        drawBitmapString(scene_->getLevelName(), 24, 48, 2.0f);
+        drawBitmapString(scene_->getLevelName(), 24, 22 + lineH, ts);
 
         // score (top-right)
         string sc = "SCORE " + pad(scene_->getScore());
         string hi = "HI    " + pad(scene_->getHiScore());
         setColor(1.0f, 1.0f, 0.95f);
-        drawBitmapString(sc, W - textW(sc, 2) - 24, 22, 2.0f);
+        drawBitmapString(sc, W - textW(sc, ts) - 24, 22, ts);
         setColor(0.8f, 0.65f, 0.6f);
-        drawBitmapString(hi, W - textW(hi, 2) - 24, 48, 2.0f);
+        drawBitmapString(hi, W - textW(hi, ts) - 24, 22 + lineH, ts);
 
-        // blocks remaining (top-center)
-        string blocks = "BLOCKS " + to_string(scene_->getBlocksLeft()) + "/" +
-                        to_string(scene_->getBlocksTotal());
-        center(blocks, 22, 2, Color(0.85f, 0.88f, 0.95f));
-
-        if (scene_->isAutopilot() && fmodf(getElapsedTimef(), 0.8f) < 0.5f)
-            center("AUTO", 50, 2, Color(0.5f, 0.85f, 0.6f));
-
-        // shots: cannonball icons (top-left under the level name on mobile —
-        // the bottom-left corner belongs to the dpad there)
-        float sx = 24, sy = mobile_ ? 80 : H - 52;
+        // shots: cannonball icons, wrapped every 10 (top-left block on mobile,
+        // bottom-left on desktop)
+        float sx = 24, sy = mobile_ ? 22 + lineH * 2 : H - 52;
+        float dotR = 8.0f * k, dotStep = 26.0f * k;
         setColor(0.9f, 0.9f, 0.95f);
-        drawBitmapString("SHOTS", sx, sy, 2.0f);
+        drawBitmapString("SHOTS", sx, sy, ts);
         for (int i = 0; i < scene_->getShots(); i++) {
             setColor(0.85f, 0.88f, 0.95f);
-            drawCircle(sx + 111.0f + i * 26.0f, sy + 8.0f, 8.0f);
+            drawCircle(sx + textW("SHOTS ", ts) + (i % 10) * dotStep,
+                       sy + ts * 4.0f + (i / 10) * (dotR * 2.2f), dotR);
         }
+
+        // blocks remaining: top-center normally, stacked under SHOTS when the
+        // window is too narrow for three top columns
+        string blocks = "BLOCKS " + to_string(scene_->getBlocksLeft()) + "/" +
+                        to_string(scene_->getBlocksTotal());
+        setColor(0.85f, 0.88f, 0.95f);
+        if (narrow) drawBitmapString(blocks, sx, sy + lineH * 1.4f, ts);
+        else        center(blocks, 22, ts, Color(0.85f, 0.88f, 0.95f));
+
+        if (scene_->isAutopilot() && fmodf(getElapsedTimef(), 0.8f) < 0.5f)
+            center("AUTO", narrow ? 22.0f : 22 + lineH, ts, Color(0.5f, 0.85f, 0.6f));
 
         // oscillating power gauge while charging — release inside the white
         // MAX zone at the right end for a MAX shot
         Cannon* c = scene_->cannon();
         if (c->isCharging()) {
-            float gw = 280, gh = 18;
-            // mobile: gauge sits center-bottom, clear of the dpad/fire buttons
+            float gw = std::min(280.0f, W - 48), gh = 18;
+            // mobile: centered above the dpad / fire buttons
             float gx = mobile_ ? (W - gw) * 0.5f : 24;
-            float gy = mobile_ ? H - 46 : H - 100;
+            float gy = mobile_ ? H - 175 : H - 100;
             float p = c->getPower();
             bool inZone = p >= Cannon::MAX_ZONE;
             setColor(0.85f, 0.85f, 0.9f);
@@ -161,36 +177,39 @@ private:
 
     void drawLevelClear() {
         dim(0.45f);
-        float t = getElapsedTimef();
+        float t = getElapsedTimef(), k = uiScale(), H = getHeight();
         centerShadow("LEVEL " + to_string(scene_->getLevelNumber()) + " CLEAR!",
-                     getHeight() * 0.36f, 5,
+                     H * 0.36f, 5.0f * k,
                      Color::fromHSB(fmodf(t * 0.3f, 1.0f), 0.5f, 1.0f));
         center("SHOT BONUS  +" + to_string(scene_->getLastBonus()),
-               getHeight() * 0.36f + 70, 2.5f, Color(1.0f, 0.95f, 0.6f));
+               H * 0.36f + 70 * k, 2.5f * k, Color(1.0f, 0.95f, 0.6f));
         center("SCORE  " + pad(scene_->getScore()),
-               getHeight() * 0.36f + 110, 2.5f, Color(0.95f, 0.95f, 1.0f));
+               H * 0.36f + 110 * k, 2.5f * k, Color(0.95f, 0.95f, 1.0f));
     }
 
     void drawGameOver() {
         dim(0.55f);
-        centerShadow("GAME OVER", getHeight() * 0.38f, 6, Color(0.95f, 0.35f, 0.3f));
+        float k = uiScale(), H = getHeight();
+        centerShadow("GAME OVER", H * 0.38f, 6.0f * k, Color(0.95f, 0.35f, 0.3f));
         center("SCORE  " + pad(scene_->getScore()),
-               getHeight() * 0.38f + 80, 2.5f, Color(0.95f, 0.95f, 1.0f));
+               H * 0.38f + 80 * k, 2.5f * k, Color(0.95f, 0.95f, 1.0f));
         if (fmodf(getElapsedTimef(), 1.2f) < 0.75f)
-            center("PRESS ENTER", getHeight() * 0.38f + 130, 2, Color(0.8f, 0.8f, 0.85f));
+            center(mobile_ ? "TAP TO CONTINUE" : "PRESS ENTER",
+                   H * 0.38f + 130 * k, 2.0f * k, Color(0.8f, 0.8f, 0.85f));
     }
 
     void drawAllClear() {
         dim(0.35f);
-        float t = getElapsedTimef();
-        centerShadow("ALL LEVELS CLEAR!", getHeight() * 0.28f, 6,
+        float t = getElapsedTimef(), k = uiScale(), H = getHeight();
+        centerShadow("ALL LEVELS CLEAR!", H * 0.28f, 6.0f * k,
                      Color::fromHSB(fmodf(t * 0.5f, 1.0f), 0.7f, 1.0f));
-        center("FINAL SCORE", getHeight() * 0.28f + 100, 3, Color(0.95f, 0.95f, 1.0f));
-        centerShadow(pad(scene_->getScore()), getHeight() * 0.28f + 150, 5,
+        center("FINAL SCORE", H * 0.28f + 100 * k, 3.0f * k, Color(0.95f, 0.95f, 1.0f));
+        centerShadow(pad(scene_->getScore()), H * 0.28f + 150 * k, 5.0f * k,
                      Color(1.0f, 0.85f, 0.3f));
-        center("YOU ARE A TRUE TRUSS BUSTER", getHeight() * 0.28f + 240, 2,
+        center("YOU ARE A TRUE TRUSS BUSTER", H * 0.28f + 240 * k, 2.0f * k,
                Color(0.7f, 0.9f, 0.75f));
         if (fmodf(t, 1.2f) < 0.75f)
-            center("PRESS ENTER", getHeight() * 0.28f + 290, 2, Color(0.8f, 0.8f, 0.85f));
+            center(mobile_ ? "TAP TO CONTINUE" : "PRESS ENTER",
+                   H * 0.28f + 290 * k, 2.0f * k, Color(0.8f, 0.8f, 0.85f));
     }
 };
