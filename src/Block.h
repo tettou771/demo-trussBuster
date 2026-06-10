@@ -22,11 +22,17 @@ public:
 
     bool isBusted() const { return busted_; }
     int  getPoints() const { return def_.points; }
+    void setPoints(int p) { def_.points = p; }
+    Vec3 getSize() const { return def_.size; }
+    bool getFalse() const { return false; }
+    void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
 
     using Super = Node;
     TC_REFLECT(Block)
-        TC_PROPERTY_RO(points, getPoints)
+        TC_PROPERTY(points, getPoints, setPoints)
+        TC_PROPERTY_RO(size, getSize)
         TC_PROPERTY_RO(busted, isBusted)
+        TC_PROPERTY(deleteBlock, getFalse, doDelete)
     TC_REFLECT_END
 
     void setup() override {
@@ -40,6 +46,7 @@ public:
     }
 
     void update() override {
+        if (stageEditMode()) return;   // being edited: never self-bust
         float dt = (float)getDeltaTime();
         if (!busted_) {
             // busted when it leaves the platform: below its top, OR outside

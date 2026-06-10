@@ -19,6 +19,10 @@ struct BlockDef {
 // standard look for static obstacles (dark, reads as scenery)
 inline Color wallColor() { return Color(0.20f, 0.21f, 0.28f); }
 
+// global stage-edit flag: while on, physics is paused and blocks must not
+// bust themselves (they're being dragged around with the gizmo)
+inline bool& stageEditMode() { static bool b = false; return b; }
+
 struct LevelDef {
     string           name;
     int              shots;

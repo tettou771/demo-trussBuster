@@ -26,11 +26,21 @@ inline const char* phaseName(Phase p) {
     return "?";
 }
 
-// A static physics box with a renderer (platform, pedestal).
+// A static physics box with a renderer (platform, pedestal, level walls).
 class StaticProp : public Node {
 public:
     StaticProp(const Vec3& pos, const Vec3& size, const Color& color)
         : pos_(pos), size_(size), color_(color) {}
+
+    Vec3 getSize() const { return size_; }
+    bool getFalse() const { return false; }
+    void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
+
+    using Super = Node;
+    TC_REFLECT(StaticProp)
+        TC_PROPERTY_RO(size, getSize)
+        TC_PROPERTY(deleteBlock, getFalse, doDelete)
+    TC_REFLECT_END
 
     void setup() override {
         setPos(pos_);
@@ -41,6 +51,41 @@ public:
 private:
     Vec3 pos_, size_;
     Color color_;
+};
+
+// Parent node for level blocks. Reflected spawn buttons (checkbox = button):
+// set spawnSize/spawnPoints, then tick spawnBlock / spawnWall in the
+// inspector — a fresh object appears at the stage center, ready to be moved
+// with the gizmo (turn editMode on first so physics doesn't fight you).
+class TowerRoot : public Node {
+public:
+    Event<BlockDef> spawnReq;   // GameScene listens and does the spawning
+
+    Vec3 spawnSize  = Vec3(0.5f, 0.5f, 0.5f);
+    int  spawnPoints = 100;
+
+    bool getFalse() const { return false; }
+    void doSpawnBlock(bool v) { if (v) request(false); }
+    void doSpawnWall(bool v)  { if (v) request(true); }
+
+    using Super = Node;
+    TC_REFLECT(TowerRoot)
+        TC_FIELD(spawnSize)
+        TC_FIELD(spawnPoints)
+        TC_PROPERTY(spawnBlock, getFalse, doSpawnBlock)
+        TC_PROPERTY(spawnWall, getFalse, doSpawnWall)
+    TC_REFLECT_END
+
+private:
+    void request(bool wall) {
+        BlockDef d;
+        d.size = spawnSize;
+        d.pos = Vec3(0, PLATFORM_TOP + spawnSize.y * 0.5f + 0.01f, -6.0f);
+        d.points = spawnPoints;
+        d.wall = wall;
+        d.color = wall ? wallColor() : Color(0.95f, 0.85f, 0.30f);
+        spawnReq.notify(d);
+    }
 };
 
 // The 3D world: camera scope, physics, cannon, towers, game state machine.
@@ -59,12 +104,34 @@ public:
     const string& getLevelName() const { return levels_[levelIdx_].name; }
     Cannon* cannon()             { return cannon_.get(); }
 
+    // --- stage-editing debug API (inspector / MCP) ----------------------------
+    bool isEditMode() const { return editMode_; }
+    void setEditMode(bool on) {
+        editMode_ = on;
+        stageEditMode() = on;
+        if (!on) {
+            // freeze all bodies so the resumed simulation starts calm
+            for (auto& c : towerRoot_->getChildren()) {
+                if (c->isDead()) continue;
+                if (auto* rb = c->getMod<RigidBody>()) {
+                    rb->body().setLinearVelocity(Vec3(0, 0, 0));
+                    rb->body().setAngularVelocity(Vec3(0, 0, 0));
+                }
+            }
+        }
+    }
+
+    bool getFalse() const { return false; }
+    void doReload(bool v) { if (v) loadLevel(levelIdx_); }   // reset shots+blocks
+
     using Super = Node;
     TC_REFLECT(GameScene)
         TC_PROPERTY_RO(score, getScore)
         TC_PROPERTY_RO(shots, getShots)
         TC_PROPERTY_RO(blocksLeft, getBlocksLeft)
-        TC_PROPERTY_RO(level, getLevelNumber)
+        TC_PROPERTY(level, getLevelNumber, gotoLevel)
+        TC_PROPERTY(editMode, isEditMode, setEditMode)
+        TC_PROPERTY(reloadLevel, getFalse, doReload)
     TC_REFLECT_END
 
     int aliveBalls() const {
@@ -173,13 +240,14 @@ public:
         defaultWorld().setGravity(Vec3(0, -12.0f, 0));
         defaultWorld().addGroundPlane(0.0f);
 
-        // fixed camera: no mouse orbit — the slight off-axis view is part of
-        // the aiming challenge, and an orbiting camera would also consume the
-        // clicks meant for the touch buttons
+        // fixed camera for play; SHIFT+drag orbits (debug). The modifier keeps
+        // plain clicks unconsumed so touch buttons / node picking still work.
         cam_.setTarget(0.0f, 1.4f, -1.5f);
         cam_.setDistance(16.2f);   // pulled back ~20%: whole stage + barrel visible
         cam_.setAzimuth(0.22f);
         cam_.setElevation(0.30f);
+        cam_.enableMouseInput();
+        cam_.setDragModifier(EasyCam::Modifier::Shift);
 
         keyLight_.setDirectional(Vec3(-0.4f, -1.0f, -0.55f));
         keyLight_.setDiffuse(1.0f, 0.96f, 0.88f);
@@ -206,9 +274,10 @@ public:
         cannon_->setPos(0, 0.5f, 6.5f);
         addChild(cannon_);
 
-        towerRoot_ = make_shared<Node>();
+        towerRoot_ = make_shared<TowerRoot>();
         towerRoot_->setName("tower");
         addChild(towerRoot_);
+        spawnL_ = towerRoot_->spawnReq.listen(this, &GameScene::onSpawnReq);
 
         ballsRoot_ = make_shared<Node>();
         ballsRoot_->setName("balls");
@@ -222,6 +291,23 @@ public:
 
     void update() override {
         float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
+
+        if (editMode_) {
+            // stage editing: physics paused; push gizmo/inspector edits of the
+            // node transforms INTO the bodies (normally RigidBody syncs the
+            // other way and would overwrite them)
+            for (auto& c : towerRoot_->getChildren()) {
+                if (c->isDead()) continue;
+                if (auto* rb = c->getMod<RigidBody>()) {
+                    rb->body().setPosition(c->getPos());
+                    rb->body().setRotation(c->getQuaternion());
+                    rb->body().setLinearVelocity(Vec3(0, 0, 0));
+                    rb->body().setAngularVelocity(Vec3(0, 0, 0));
+                }
+            }
+            return;   // no sim, no autopilot, no game-over logic
+        }
+
         defaultWorld().update(dt);
 
         // manual aiming with held arrow keys
@@ -362,6 +448,21 @@ private:
         cannon_->cancelCharge();
         cannon_->setYawDeg(0);
         cannon_->setPitchDeg(20);
+    }
+
+    // spawn-button handler (stage editing): drop a fresh block/wall mid-stage
+    void onSpawnReq(BlockDef& bd) {
+        if (bd.wall) {
+            auto wall = make_shared<StaticProp>(bd.pos, bd.size, bd.color);
+            wall->setName("wall");
+            towerRoot_->addChild(wall);
+        } else {
+            auto block = make_shared<Block>(bd);
+            blockL_.push_back(block->busted.listen(this, &GameScene::onBlockBusted));
+            towerRoot_->addChild(block);
+            blocksTotal_++;
+            blocksLeft_++;
+        }
     }
 
     void onFired(Cannon::FireArgs& args) {
@@ -508,10 +609,12 @@ private:
     EasyCam cam_;
     Light keyLight_, fillLight_;
 
-    shared_ptr<Cannon> cannon_;
-    Mesh               dotMesh_;   // trajectory guide dot
-    shared_ptr<Node>   towerRoot_, ballsRoot_;
-    EventListener      firedL_;
+    shared_ptr<Cannon>    cannon_;
+    Mesh                  dotMesh_;   // trajectory guide dot
+    shared_ptr<TowerRoot> towerRoot_;
+    shared_ptr<Node>      ballsRoot_;
+    EventListener         firedL_, spawnL_;
+    bool                  editMode_ = false;
     vector<EventListener> blockL_;
 
     vector<LevelDef> levels_;
