@@ -20,6 +20,7 @@ struct Jukebox {
     Sound goldBust;      // gold block busted
     Sound dryFire;       // tried to fire with no shots left
     Sound peakTick;      // gauge hits the top of its swing
+    Sound snap;          // a breakable joint gives way
     Sound startJingle;   // game start
     Sound clearJingle;   // level clear
     Sound overJingle;    // game over
@@ -97,6 +98,14 @@ private:
             b.add(note(Wave::Square, mtof(100), 0.09f, 0.18f), 0.05f);   // sparkle on top
             b.add(note(Wave::Square, mtof(103), 0.12f, 0.16f), 0.11f);
             maxFire = b.build();
+        }
+        {   // joint snap: dry crack — noise click + falling square
+            ChipSoundBundle b;
+            b.add(note(Wave::Noise, 0, 0.05f, 0.5f, 0.001f, 0.015f, 0.3f, 0.02f), 0.0f);
+            b.add(note(Wave::Square, 980, 0.03f, 0.30f), 0.0f);
+            b.add(note(Wave::Square, 560, 0.04f, 0.26f), 0.03f);
+            b.add(note(Wave::Triangle, 140, 0.07f, 0.30f, 0.001f, 0.02f, 0.5f, 0.04f), 0.02f);
+            snap = b.build();
         }
         {   // gauge peak tick: tiny high blip for ear-timing
             ChipSoundBundle b;

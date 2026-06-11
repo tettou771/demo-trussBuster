@@ -379,6 +379,11 @@ public:
         addChild(ballsRoot_);
 
         firedL_ = cannon_->fired.listen(this, &GameScene::onFired);
+        // breakable joints (boss limbs, chains, ropes): crack on every snap
+        jointBrokeL_ = defaultWorld().jointBroke.listen([this](JointBreakEventArgs& a) {
+            jukebox().snap.setVolume(clamp(a.force / 40000.0f, 0.3f, 0.9f));
+            jukebox().snap.play();
+        });
 
         levels_ = makeLevels();
         toTitle();
@@ -386,24 +391,6 @@ public:
 
     void update() override {
         float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
-
-        // tearable joints break under a hard hit (cannonball impacts run
-        // ~5-12 m/s; marching/swinging drag stays below each entry's minSpeed)
-        for (auto it = tearJoints_.begin(); it != tearJoints_.end();) {
-            auto part = it->part.lock();
-            if (!part || part->isDead() || !it->joint.isValid()) {
-                it = tearJoints_.erase(it);
-                continue;
-            }
-            auto* rb = part->getMod<RigidBody>();
-            if (rb && rb->body().isValid() &&
-                rb->body().getLinearVelocity().length() > it->minSpeed) {
-                it->joint.remove();   // the part is free — and doomed
-                it = tearJoints_.erase(it);
-                continue;
-            }
-            ++it;
-        }
 
         if (editMode_) {
             // stage editing: physics paused. Node edits reach the bodies
@@ -557,7 +544,6 @@ private:
         shots_ = def.shots;
         blocksTotal_ = targets;
         blocksLeft_ = blocksTotal_;
-        tearJoints_.clear();
         switch (def.special) {
             case Special::Boss:         buildBoss(false, false); break;
             case Special::ArmorBoss:    buildBoss(true,  false); break;
@@ -649,42 +635,50 @@ private:
             if (!rbOf(torso) || !rbOf(torso)->body().isValid()) return;   // level changed
             const Vec3 Y(0, 1, 0);
             Vec3 tp = torso->getGlobalPos();
-            // waist: stiff — the torso rides the marching legs
-            tearJoints_.push_back({torso, rbOf(torso)->jointTo(pelvis.get(),
+            // Break thresholds are in newtons: ~4-6x what the joint carries
+            // statically (m*g, g=12), so marching never snaps anything but a
+            // cannonball impact does.
+            // waist: stiff — the torso rides the marching legs (holds ~5.8 kN)
+            rbOf(torso)->jointTo(pelvis.get(),
                 Joint::swingTwist(pelvis->getGlobalPos() + Vec3(0, 0.72f, 0), Y)
                     .swing(TAU * 8.0f / 360.0f)
-                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f)), 3.5f});
-            // neck: bobblehead
-            tearJoints_.push_back({head, rbOf(head)->jointTo(torso.get(),
+                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f)
+                    .breakForce(25000.0f));
+            // neck: bobblehead (holds ~1.6 kN)
+            rbOf(head)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(0, 0.55f, 0), Y)
                     .swing(TAU * 25.0f / 360.0f)
-                    .twist(-TAU * 30.0f / 360.0f, TAU * 30.0f / 360.0f)), 3.5f});
-            // shoulders: wide swing — the arms flail as it marches
-            tearJoints_.push_back({armL, rbOf(armL)->jointTo(torso.get(),
+                    .twist(-TAU * 30.0f / 360.0f, TAU * 30.0f / 360.0f)
+                    .breakForce(7000.0f));
+            // shoulders: wide swing — the arms flail as it marches (~0.8 kN)
+            rbOf(armL)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(-0.72f, 0.42f, 0), Y)
                     .swing(TAU * 65.0f / 360.0f)
-                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)), 3.5f});
-            tearJoints_.push_back({armR, rbOf(armR)->jointTo(torso.get(),
-                Joint::swingTwist(tp + Vec3(0.72f, 0.42f, 0), Y)
                     .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)
-                    .swing(TAU * 65.0f / 360.0f)), 3.5f});
-            if (plate) {   // armor hangs stiff in front; soaks the impact
-                tearJoints_.push_back({plate, rbOf(plate)->jointTo(torso.get(),
+                    .breakForce(3500.0f));
+            rbOf(armR)->jointTo(torso.get(),
+                Joint::swingTwist(tp + Vec3(0.72f, 0.42f, 0), Y)
+                    .swing(TAU * 65.0f / 360.0f)
+                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)
+                    .breakForce(3500.0f));
+            if (plate) {   // armor hangs stiff in front; soaks the impact and
+                           // strips well before the waist gives (9 < 25 kN)
+                rbOf(plate)->jointTo(torso.get(),
                     Joint::swingTwist(tp + Vec3(0, 0, 0.30f), Y)
                         .swing(TAU * 5.0f / 360.0f)
-                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)), 3.0f});
-                tearJoints_.push_back({visor, rbOf(visor)->jointTo(head.get(),
+                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)
+                        .breakForce(9000.0f));
+                rbOf(visor)->jointTo(head.get(),
                     Joint::swingTwist(head->getGlobalPos() + Vec3(0, 0, 0.26f), Y)
                         .swing(TAU * 5.0f / 360.0f)
-                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)), 3.0f});
+                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)
+                        .breakForce(2500.0f));
             }
             if (bar) {     // motor-driven blade: hinge facing the cannon
                 PhysicsJoint j = rbOf(bar)->jointTo(pelvis.get(),
-                    Joint::hinge(bar->getGlobalPos(), Vec3(0, 0, 1)));
+                    Joint::hinge(bar->getGlobalPos(), Vec3(0, 0, 1))
+                        .breakForce(6000.0f));
                 j.setMotorVelocity(3.5f);
-                // bar center sits on the hinge axis, so its linear speed stays
-                // ~0 while spinning — a solid hit still tears it
-                tearJoints_.push_back({bar, j, 4.0f});
             }
         });
     }
@@ -705,10 +699,12 @@ private:
         callAfter(0.1, [this, arm, l1, l2, l3, ball]() {
             if (!rbOf(ball) || !rbOf(ball)->body().isValid()) return;
             const Vec3 Y(0, 1, 0);
+            // each link carries the ball (~2.3 kN static, ~3 kN swinging)
             auto link = [&](shared_ptr<Block> a, shared_ptr<Node> base, Vec3 anchor) {
-                tearJoints_.push_back({a, rbOf(a)->jointTo(base.get(),
+                rbOf(a)->jointTo(base.get(),
                     Joint::swingTwist(anchor, Y).swing(TAU * 40.0f / 360.0f)
-                        .twist(-TAU * 10.0f / 360.0f, TAU * 10.0f / 360.0f)), 5.5f});
+                        .twist(-TAU * 10.0f / 360.0f, TAU * 10.0f / 360.0f)
+                        .breakForce(8000.0f));
             };
             link(l1, arm, Vec3(0, 5.35f, -6.0f));
             link(l2, l1, l1->getGlobalPos() + Vec3(0, -0.24f, 0));
@@ -737,18 +733,23 @@ private:
         callAfter(0.1, [this, pyL, pyR, rL, rR, plank]() {
             if (!rbOf(plank) || !rbOf(plank)->body().isValid()) return;
             const Vec3 Y(0, 1, 0);
-            tearJoints_.push_back({rL, rbOf(rL)->jointTo(pyL.get(),
+            // each rope carries half the plank + riders (~3.7 kN static)
+            rbOf(rL)->jointTo(pyL.get(),
                 Joint::swingTwist(Vec3(-2.1f, 3.60f, -9.5f), Y)
-                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
-            tearJoints_.push_back({rR, rbOf(rR)->jointTo(pyR.get(),
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)
+                    .breakForce(12000.0f));
+            rbOf(rR)->jointTo(pyR.get(),
                 Joint::swingTwist(Vec3(2.1f, 3.60f, -9.5f), Y)
-                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
-            tearJoints_.push_back({plank, rbOf(plank)->jointTo(rL.get(),
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)
+                    .breakForce(12000.0f));
+            rbOf(plank)->jointTo(rL.get(),
                 Joint::swingTwist(Vec3(-1.85f, 3.05f, -9.5f), Y)
-                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
-            tearJoints_.push_back({plank, rbOf(plank)->jointTo(rR.get(),
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)
+                    .breakForce(12000.0f));
+            rbOf(plank)->jointTo(rR.get(),
                 Joint::swingTwist(Vec3(1.85f, 3.05f, -9.5f), Y)
-                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)
+                    .breakForce(12000.0f));
         });
     }
 
@@ -775,9 +776,11 @@ private:
                 shared_ptr<Node> base = (i == 0) ? (shared_ptr<Node>)headM
                                                  : (shared_ptr<Node>)segs[i - 1];
                 Vec3 a = (segs[i]->getGlobalPos() + base->getGlobalPos()) * 0.5f;
-                tearJoints_.push_back({segs[i], rbOf(segs[i])->jointTo(base.get(),
+                // tow tension peaks ~3 kN dragging the whole tail by friction
+                rbOf(segs[i])->jointTo(base.get(),
                     Joint::swingTwist(a, Y).swing(TAU * 50.0f / 360.0f)
-                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)), 3.5f});
+                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
+                        .breakForce(6000.0f));
             }
         });
     }
@@ -947,8 +950,7 @@ private:
     EventListener         firedL_, spawnL_;
     bool                  editMode_ = false;
     vector<EventListener> blockL_;
-    struct TearEntry { weak_ptr<Node> part; PhysicsJoint joint; float minSpeed; };
-    vector<TearEntry> tearJoints_;
+    EventListener jointBrokeL_;
 
     vector<LevelDef> levels_;
     size_t levelIdx_ = 0;
