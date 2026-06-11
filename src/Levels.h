@@ -14,6 +14,12 @@ struct BlockDef {
     Color color;
     int   points = 100;
     bool  wall = false;   // static obstacle: immovable, doesn't count, can't bust
+    // kinematic shuttle (moving obstacle; gray like walls, not a target)
+    bool     mover = false;
+    Vec3     posB;                          // far end of the shuttle run
+    float    period = 2.0f;                 // full back-and-forth cycle (s)
+    EaseType moveEase = EaseType::Linear;
+    bool     piston = false;                // pop-up launcher (pos=retracted, posB=extended, period=bottom dwell)
 };
 
 // standard look for static obstacles (dark, reads as scenery)
@@ -177,50 +183,82 @@ inline vector<LevelDef> makeLevels() {
         levels.push_back(l);
     }
 
-    {   // Level 7: a STATIC roof over the lane — arcing shots smack it, only
-        // flat MAX-power shots fit underneath (release in the white zone!)
-        LevelDef l{"LIMBO", 6, {}};
-        Color goldC(0.95f, 0.85f, 0.30f), single(0.55f, 0.80f, 0.95f);
-        l.blocks.push_back({Vec3(0, 2.45f, -5.2f), Vec3(3.4f, 0.25f, 0.9f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(-1.85f, 1.65f, -5.2f), Vec3(0.3f, 1.3f, 0.9f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3( 1.85f, 1.65f, -5.2f), Vec3(0.3f, 1.3f, 0.9f), wallColor(), 0, true});
-        for (float x : {-0.8f, 0.0f, 0.8f})
-            l.blocks.push_back({Vec3(x, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), goldC, 200});
-        l.blocks.push_back({Vec3(-2.75f, 1.2f, -6.2f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
-        l.blocks.push_back({Vec3( 2.75f, 1.2f, -6.2f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
+    {   // Level 7: two sliding doors (kinematic, linear shuttle) sweep
+        // across the lane — time your shots through the moving gap.
+        // The nearer door is faster.
+        LevelDef l{"FUSUMA", 8, {}};
+        Color targetC(0.95f, 0.85f, 0.30f);
+        BlockDef doorA;   // front, fast
+        doorA.mover = true;
+        doorA.pos  = Vec3(-2.6f, 1.75f, -4.3f);
+        doorA.posB = Vec3( 2.6f, 1.75f, -4.3f);
+        doorA.size = Vec3(1.0f, 1.5f, 0.2f);
+        doorA.period = 3.0f;
+        l.blocks.push_back(doorA);
+        BlockDef doorB;   // behind, slower, starts on the other side
+        doorB.mover = true;
+        doorB.pos  = Vec3( 2.6f, 1.75f, -5.5f);
+        doorB.posB = Vec3(-2.6f, 1.75f, -5.5f);
+        doorB.size = Vec3(1.0f, 1.5f, 0.2f);
+        doorB.period = 4.0f;
+        l.blocks.push_back(doorB);
+        // five easy targets in a row behind the doors
+        for (float x : {-1.6f, -0.8f, 0.0f, 0.8f, 1.6f})
+            l.blocks.push_back({Vec3(x, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f),
+                                targetC, 150});
         levels.push_back(l);
     }
 
-    {   // Level 8: a STATIC rampart with two arrow slits — thread the pairs
-        // through them; the purple pair has no slit: lob it over the top
-        LevelDef l{"ARROW SLIT", 5, {}};
-        Color pairC(0.95f, 0.85f, 0.30f), lobC(0.70f, 0.60f, 0.90f);
-        l.blocks.push_back({Vec3(-2.46f, 1.85f, -5.6f), Vec3(1.48f, 1.7f, 0.3f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3( 0.13f, 1.85f, -5.6f), Vec3(2.30f, 1.7f, 0.3f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3( 2.59f, 1.85f, -5.6f), Vec3(1.22f, 1.7f, 0.3f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(-1.76f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3(-1.24f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3( 1.54f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3( 2.06f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3(-0.56f, 1.25f, -7.0f), Vec3(0.5f, 0.5f, 0.5f), lobC, 300});
-        l.blocks.push_back({Vec3(-0.04f, 1.25f, -7.0f), Vec3(0.5f, 0.5f, 0.5f), lobC, 300});
-        levels.push_back(l);
-    }
-
-    {   // Level 9: seesaw catapults — LOB a ball onto the front end of each
-        // beam and the cargo on the rear end launches itself off the platform
-        // (hitting the cargo directly only takes the cargo: 3 shots per lane)
-        LevelDef l{"CATAPULT", 6, {}};
-        Color fulcrumC(0.55f, 0.55f, 0.65f), beamC(0.90f, 0.80f, 0.40f);
-        Color cargoC(0.95f, 0.85f, 0.30f);
-        for (float cx : {-1.5f, 1.5f}) {
-            l.blocks.push_back({Vec3(cx, 1.25f, -6.4f), Vec3(0.5f, 0.5f, 0.6f), fulcrumC, 100});
-            l.blocks.push_back({Vec3(cx, 1.63f, -6.4f), Vec3(0.7f, 0.22f, 2.6f), beamC, 150});
-            l.blocks.push_back({Vec3(cx, 1.95f, -7.3f), Vec3(0.45f, 0.45f, 0.45f), cargoC, 200});
-            l.blocks.push_back({Vec3(cx, 1.95f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), cargoC, 200});
+    {   // Level 8: three kinematic decks shuttle above the stage center
+        // (Quad ease, gentle enough that riders keep their footing) —
+        // bottom is widest+slowest, higher decks are narrower and faster
+        LevelDef l{"SKY DECKS", 5, {}};
+        Color targetC(0.95f, 0.85f, 0.30f), goldC(1.0f, 0.82f, 0.1f);
+        const float deckY[3]   = {1.5f, 3.0f, 4.5f};
+        const float amp[3]     = {2.55f, 1.70f, 1.28f};
+        const float cycle[3]   = {6.0f, 4.0f, 3.0f};
+        const int   pts[3]     = {100, 200, 300};
+        for (int i = 0; i < 3; i++) {
+            BlockDef deck;
+            deck.mover = true;
+            float side = (i % 2 == 0) ? -1.0f : 1.0f;
+            deck.pos  = Vec3( side * amp[i], deckY[i], -6.0f);
+            deck.posB = Vec3(-side * amp[i], deckY[i], -6.0f);
+            deck.size = Vec3(1.3f, 0.22f, 1.0f);
+            deck.period = cycle[i];
+            deck.moveEase = EaseType::Quad;
+            l.blocks.push_back(deck);
+            // rider on the deck
+            l.blocks.push_back({Vec3(side * amp[i], deckY[i] + 0.11f + 0.24f, -6.0f),
+                                Vec3(0.45f, 0.45f, 0.45f),
+                                i == 2 ? goldC : targetC, pts[i]});
         }
-        l.blocks.push_back({Vec3(-0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), cargoC, 200});
-        l.blocks.push_back({Vec3( 0.26f, 1.25f, -7.4f), Vec3(0.5f, 0.5f, 0.5f), cargoC, 200});
+        levels.push_back(l);
+    }
+
+    {   // Level 9: skeet range — a stage-wide fence hides three pistons
+        // that toss big targets into the air on staggered cycles; shoot them
+        // while they fly
+        LevelDef l{"MOGURA", 8, {}};
+        Color targetC(0.95f, 0.85f, 0.30f), goldC(1.0f, 0.82f, 0.1f);
+        // the fence (static): full stage width, hides everything behind it
+        l.blocks.push_back({Vec3(0, 1.75f, -5.0f), Vec3(6.4f, 1.5f, 0.2f),
+                            wallColor(), 0, true});
+        // three pistons + their big riders
+        const float px[3]    = {-1.8f, 0.0f, 1.8f};
+        const float dwell[3] = {1.6f, 2.3f, 3.0f};   // staggered pop timing
+        for (int i = 0; i < 3; i++) {
+            BlockDef p;
+            p.piston = true;
+            p.pos  = Vec3(px[i], 0.4f, -6.2f);       // top flush with the floor
+            p.posB = Vec3(px[i], 2.0f, -6.2f);       // top pokes above the fence
+            p.size = Vec3(0.9f, 1.2f, 0.9f);
+            p.period = dwell[i];
+            l.blocks.push_back(p);
+            l.blocks.push_back({Vec3(px[i], 1.0f + 0.33f, -6.2f),
+                                Vec3(0.65f, 0.65f, 0.65f),
+                                i == 1 ? goldC : targetC, i == 1 ? 300 : 150});
+        }
         levels.push_back(l);
     }
 

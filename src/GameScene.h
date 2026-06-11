@@ -64,6 +64,86 @@ private:
     ColliderRenderer* renderer_ = nullptr;
 };
 
+// A kinematic obstacle shuttling between two points, driven by TweenMod
+// (complete-event chains the return leg). Same gray as static props: this
+// is scenery, not a target. The kinematic body follows the node, so it
+// properly deflects cannonballs and carries riders by friction.
+class MovingProp : public Node {
+public:
+    MovingProp(const BlockDef& def) : def_(def) {}
+
+    void setup() override {
+        setName("mover");
+        setPos(def_.pos);
+        // high friction: riders on a moving deck must be carried, not shed
+        // (the default 0.2 is ice — Quint's acceleration flicks them off)
+        addMod<RigidBody>(ColliderShape::box(def_.size), BodyType::Kinematic)
+            ->setFriction(1.5f);
+        addMod<ColliderRenderer>()->setColor(toLinearColor(wallColor()));
+        tween_ = addMod<TweenMod>();
+        completeL_ = tween_->complete.listen([this]() { leg(); });
+        leg();
+
+    }
+
+private:
+    void leg() {
+        toB_ = !toB_;
+        tween_->moveTo(toB_ ? def_.posB : def_.pos)
+               .duration(def_.period * 0.5f)
+               .ease(def_.moveEase, EaseMode::InOut)
+               .start();
+    }
+
+    BlockDef      def_;
+    bool          toB_ = false;
+    TweenMod*     tween_ = nullptr;
+    EventListener completeL_;
+};
+
+// A kinematic piston that pops up from floor level (Quad ease-in — the
+// abrupt stop at the top LAUNCHES whatever rides it), holds briefly, then
+// retracts flush with the floor. def_.pos = retracted center, def_.posB =
+// extended center, def_.period = dwell at the bottom between pops.
+class PistonProp : public Node {
+public:
+    PistonProp(const BlockDef& def) : def_(def) {}
+
+    void setup() override {
+        setName("piston");
+        setPos(def_.pos);
+        addMod<RigidBody>(ColliderShape::box(def_.size), BodyType::Kinematic)
+            ->setFriction(0.9f);
+        addMod<ColliderRenderer>()->setColor(toLinearColor(wallColor()));
+        tween_ = addMod<TweenMod>();
+        completeL_ = tween_->complete.listen([this]() { next(); });
+        phase_ = 1;            // pretend we just finished retracting
+        next();
+    }
+
+private:
+    void next() {
+        phase_ = (phase_ + 1) % 2;
+        if (phase_ == 0) {
+            // dwell at the bottom, then pop: ease-in ends at max speed,
+            // launching the rider ballistically
+            tween_->moveTo(def_.posB).duration(0.4f)
+                   .ease(EaseType::Quad, EaseMode::In)
+                   .delay(def_.period).start();
+        } else {
+            // retract IMMEDIATELY — the launched rider must land on the
+            // floor behind the fence, never on an extended piston
+            tween_->moveTo(def_.pos).duration(0.5f)
+                   .ease(EaseType::Quad, EaseMode::Out).start();
+        }
+    }
+
+    BlockDef      def_;
+    int           phase_ = 0;
+    TweenMod*     tween_ = nullptr;
+    EventListener completeL_;
+};
+
 // Parent node for level blocks. Reflected spawn buttons (checkbox = button):
 // set spawnSize/spawnPoints, then tick spawnBlock / spawnWall in the
 // inspector — a fresh object appears at the stage center, ready to be moved
@@ -432,6 +512,14 @@ private:
         const LevelDef& def = levels_[idx];
         int targets = 0;
         for (const auto& bd : def.blocks) {
+            if (bd.piston) {
+                towerRoot_->addChild(make_shared<PistonProp>(bd));
+                continue;
+            }
+            if (bd.mover) {
+                towerRoot_->addChild(make_shared<MovingProp>(bd));
+                continue;
+            }
             if (bd.wall) {
                 // static obstacle: immovable scenery, not a target
                 auto wall = make_shared<StaticProp>(bd.pos, bd.size, bd.color);
