@@ -3,7 +3,7 @@
 #include <TrussC.h>
 #include <tcxPhysics.h>
 #include "ChipTunes.h"
-#include "FlatRenderer.h"
+#include "ColliderPicker.h"
 #include "Levels.h"
 #include "Block.h"
 #include "Cannonball.h"
@@ -37,7 +37,8 @@ public:
         size_ = s;
         if (!renderer_) return;   // before setup: just store
         addMod<RigidBody>(ColliderShape::box(s), BodyType::Kinematic);
-        renderer_->invalidateMesh();
+        renderer_ = addMod<ColliderRenderer>();   // recreate: drops the cached mesh
+        renderer_->setColor(color_);
     }
     bool getFalse() const { return false; }
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
@@ -54,14 +55,15 @@ public:
         // every frame, so gizmo/inspector edits move the COLLIDER too (a
         // static body would leave its collision behind)
         addMod<RigidBody>(ColliderShape::box(size_), BodyType::Kinematic);
-        renderer_ = addMod<FlatRenderer>();
+        renderer_ = addMod<ColliderRenderer>();
         renderer_->setColor(color_);
+        addMod<ColliderPicker>();
     }
 
 private:
     Vec3 pos_, size_;
     Color color_;
-    FlatRenderer* renderer_ = nullptr;
+    ColliderRenderer* renderer_ = nullptr;
 };
 
 // Parent node for level blocks. Reflected spawn buttons (checkbox = button):

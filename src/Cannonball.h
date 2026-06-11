@@ -3,7 +3,7 @@
 #include <TrussC.h>
 #include <tcxPhysics.h>
 #include "ChipTunes.h"
-#include "FlatRenderer.h"
+#include "ColliderPicker.h"
 
 using namespace std;
 using namespace tc;
@@ -23,8 +23,8 @@ public:
                                      BodyType::Dynamic, 9000.0f);
         rb->setFriction(0.5f).setRestitution(0.25f);
         rb->body().setLinearVelocity(velocity_);
-        auto* renderer = addMod<FlatRenderer>();
-        renderer->setColor(Color(0.22f, 0.23f, 0.28f));
+        addMod<ColliderRenderer>()->setColor(Color(0.22f, 0.23f, 0.28f));
+        addMod<ColliderPicker>();
         hitL_ = rb->onCollisionBegan.listen(this, &Cannonball::onHit);
     }
 

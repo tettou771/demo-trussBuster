@@ -4,7 +4,7 @@
 #include <tcxPhysics.h>
 #include "Levels.h"
 #include "ChipTunes.h"
-#include "FlatRenderer.h"
+#include "ColliderPicker.h"
 
 using namespace std;
 using namespace tc;
@@ -31,7 +31,8 @@ public:
         // mod; its onDestroy removes the old body from the world)
         auto* rb = addMod<RigidBody>(ColliderShape::box(s), BodyType::Dynamic, 800.0f);
         rb->setFriction(0.65f).setRestitution(0.05f);
-        renderer_->invalidateMesh();
+        renderer_ = addMod<ColliderRenderer>();   // recreate: drops the cached mesh
+        renderer_->setColor(def_.color);
     }
     bool getFalse() const { return false; }
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
@@ -50,8 +51,9 @@ public:
         auto* rb = addMod<RigidBody>(ColliderShape::box(def_.size),
                                      BodyType::Dynamic, 800.0f);
         rb->setFriction(0.65f).setRestitution(0.05f);
-        renderer_ = addMod<FlatRenderer>();
+        renderer_ = addMod<ColliderRenderer>();
         renderer_->setColor(def_.color);
+        addMod<ColliderPicker>();
     }
 
     void update() override {
@@ -86,7 +88,7 @@ private:
     }
 
     BlockDef          def_;
-    FlatRenderer* renderer_ = nullptr;
+    ColliderRenderer* renderer_ = nullptr;
     bool              busted_ = false;
     float             pop_ = 1.0f;
 };
