@@ -387,6 +387,24 @@ public:
     void update() override {
         float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
 
+        // boss joints tear under a hard hit (cannonball impact speeds are
+        // ~5-12 m/s; the marching drag stays under ~2 m/s)
+        for (auto it = bossJoints_.begin(); it != bossJoints_.end();) {
+            auto part = it->first.lock();
+            if (!part || part->isDead() || !it->second.isValid()) {
+                it = bossJoints_.erase(it);
+                continue;
+            }
+            auto* rb = part->getMod<RigidBody>();
+            if (rb && rb->body().isValid() &&
+                rb->body().getLinearVelocity().length() > 3.5f) {
+                it->second.remove();   // the part is free — and doomed
+                it = bossJoints_.erase(it);
+                continue;
+            }
+            ++it;
+        }
+
         if (editMode_) {
             // stage editing: physics paused. Node edits reach the bodies
             // event-driven (Block::pushToBody on localMatrixChanged; walls
@@ -539,6 +557,8 @@ private:
         shots_ = def.shots;
         blocksTotal_ = targets;
         blocksLeft_ = blocksTotal_;
+        bossJoints_.clear();
+        if (def.boss) buildBoss();
         lastBonus_ = 0;
         settle_ = 0;
         aiAiming_ = false;
@@ -561,6 +581,68 @@ private:
             blocksTotal_++;
             blocksLeft_++;
         }
+    }
+
+    // The L10 boss: a marching kinematic lower body with a jointed dynamic
+    // upper body. Joints are wired one frame later (bodies appear in the
+    // parts' deferred setup). Busting the torso frees everything attached.
+    void buildBoss() {
+        BlockDef legs;
+        legs.mover = true;
+        legs.pos  = Vec3(-1.8f, 1.7f, -6.3f);
+        legs.posB = Vec3( 1.8f, 1.7f, -6.3f);
+        legs.size = Vec3(0.9f, 1.4f, 0.5f);
+        legs.period = 9.0f;
+        legs.moveEase = EaseType::Quad;
+        auto pelvis = make_shared<MovingProp>(legs);
+        towerRoot_->addChild(pelvis);
+
+        auto part = [&](Vec3 pos, Vec3 size, Color c, int pts) {
+            BlockDef d;
+            d.pos = pos; d.size = size; d.color = c; d.points = pts;
+            auto b = make_shared<Block>(d);
+            blockL_.push_back(b->busted.listen(this, &GameScene::onBlockBusted));
+            towerRoot_->addChild(b);
+            blocksTotal_++;
+            blocksLeft_++;
+            return b;
+        };
+        float bx = legs.pos.x, bz = legs.pos.z;
+        auto torso = part(Vec3(bx, 2.95f, bz), Vec3(1.1f, 1.0f, 0.55f),
+                          Color(0.36f, 0.40f, 0.85f), 200);
+        auto head  = part(Vec3(bx, 3.80f, bz), Vec3(0.55f, 0.55f, 0.55f),
+                          Color(1.0f, 0.82f, 0.1f), 500);
+        auto armL  = part(Vec3(bx - 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
+                          Color(0.95f, 0.55f, 0.30f), 150);
+        auto armR  = part(Vec3(bx + 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
+                          Color(0.95f, 0.55f, 0.30f), 150);
+
+        callAfter(0.1, [this, pelvis, torso, head, armL, armR]() {
+            auto rb = [](const shared_ptr<Node>& n) { return n->getMod<RigidBody>(); };
+            if (!rb(torso) || !rb(torso)->body().isValid()) return;   // level changed
+            const Vec3 Y(0, 1, 0);
+            Vec3 tp = torso->getGlobalPos();
+            // BREAKABLE joints: a hard enough hit (see update) tears them.
+            // waist: stiff — the torso rides the marching legs
+            bossJoints_.push_back({torso, rb(torso)->jointTo(pelvis.get(),
+                Joint::swingTwist(pelvis->getGlobalPos() + Vec3(0, 0.72f, 0), Y)
+                    .swing(TAU * 8.0f / 360.0f)
+                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f))});
+            // neck: bobblehead
+            bossJoints_.push_back({head, rb(head)->jointTo(torso.get(),
+                Joint::swingTwist(tp + Vec3(0, 0.55f, 0), Y)
+                    .swing(TAU * 25.0f / 360.0f)
+                    .twist(-TAU * 30.0f / 360.0f, TAU * 30.0f / 360.0f))});
+            // shoulders: wide swing — the arms flail as it marches
+            bossJoints_.push_back({armL, rb(armL)->jointTo(torso.get(),
+                Joint::swingTwist(tp + Vec3(-0.72f, 0.42f, 0), Y)
+                    .swing(TAU * 65.0f / 360.0f)
+                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f))});
+            bossJoints_.push_back({armR, rb(armR)->jointTo(torso.get(),
+                Joint::swingTwist(tp + Vec3(0.72f, 0.42f, 0), Y)
+                    .swing(TAU * 65.0f / 360.0f)
+                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f))});
+        });
     }
 
     void onFired(Cannon::FireArgs& args) {
@@ -714,6 +796,7 @@ private:
     EventListener         firedL_, spawnL_;
     bool                  editMode_ = false;
     vector<EventListener> blockL_;
+    vector<pair<weak_ptr<Node>, PhysicsJoint>> bossJoints_;
 
     vector<LevelDef> levels_;
     size_t levelIdx_ = 0;

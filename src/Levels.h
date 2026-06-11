@@ -40,6 +40,7 @@ struct LevelDef {
     string           name;
     int              shots;
     vector<BlockDef> blocks;
+    bool             boss = false;   // spawn the jointed humanoid (GameScene::buildBoss)
 };
 
 constexpr float PLATFORM_TOP = 1.0f;
@@ -275,25 +276,11 @@ inline vector<LevelDef> makeLevels() {
         levels.push_back(l);
     }
 
-    {   // Level 10: the gauntlet — one lane per discipline: shaded corner
-        // (pusher sweep), roof tunnel (MAX thread), edge slit (precision yaw)
-        LevelDef l{"GAUNTLET", 5, {}};
-        Color shield(0.85f, 0.45f, 0.40f), single(0.55f, 0.80f, 0.95f);
-        Color goldC(1.0f, 0.82f, 0.1f), pairC(0.95f, 0.85f, 0.30f);
-        // left: shade wall + wide pusher + hidden blue
-        l.blocks.push_back({Vec3(-2.3f, 1.95f, -6.9f), Vec3(0.9f, 1.9f, 0.25f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(-1.5f, 1.5f, -7.05f), Vec3(1.5f, 1.0f, 0.3f), shield, 150});
-        l.blocks.push_back({Vec3(-2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f), single, 100});
-        // center: roof tunnel + gold pair
-        l.blocks.push_back({Vec3(0.2f, 2.45f, -5.4f), Vec3(2.0f, 0.25f, 0.9f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(-0.7f, 1.65f, -5.4f), Vec3(0.25f, 1.3f, 0.9f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3( 1.1f, 1.65f, -5.4f), Vec3(0.25f, 1.3f, 0.9f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(-0.06f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300});
-        l.blocks.push_back({Vec3( 0.46f, 1.25f, -7.5f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300});
-        // right: rampart with an edge slit, pair behind it
-        l.blocks.push_back({Vec3(1.75f, 1.85f, -5.8f), Vec3(1.0f, 1.7f, 0.3f), wallColor(), 0, true});
-        l.blocks.push_back({Vec3(2.58f, 1.25f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), pairC, 200});
-        l.blocks.push_back({Vec3(3.02f, 1.25f, -7.0f), Vec3(0.45f, 0.45f, 0.45f), pairC, 200});
+    {   // Level 10: ...a boss?! A shabby humanoid robot marches across the
+        // stage — kinematic legs (not a target), jointed torso/arms/head.
+        // Tear it apart. (Geometry built in GameScene::buildBoss.)
+        LevelDef l{"BOSS?!", 6, {}};
+        l.boss = true;
         levels.push_back(l);
     }
 
