@@ -9,10 +9,12 @@ using namespace tcx;
 // Renders the sibling RigidBody's collider mesh with CPU (per-vertex)
 // lighting through sokol_gl, instead of ColliderRenderer's GPU PBR path.
 //
-// Why not ColliderRenderer: the meshPbr shader currently kills the GPU
-// context on iOS Safari (wasm target of this game), and deferred PBR draws
-// can overdraw HUD text. Per-vertex lighting is visually equivalent for
-// flat-shaded boxes, and the whole scene is a few hundred vertices.
+// Why not ColliderRenderer: deferred PBR draws were observed overdrawing
+// HUD text near the cannon (unexplained core quirk), and the per-vertex
+// look suits the game. (An earlier "PBR crashes iOS Safari" justification
+// was wrong — only the IBL bake breaks there, and core auto-skips it.)
+// Per-vertex lighting is visually equivalent for flat-shaded boxes, and
+// the whole scene is a few hundred vertices.
 class FlatRenderer : public Mod {
     friend class trussc::Node;
 
