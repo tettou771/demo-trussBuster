@@ -35,10 +35,10 @@ public:
     void  setPitchDeg(float v) { setPitch(deg2rad(v)); }
 
     using Super = Node;
-    TC_REFLECT(Cannon)
-        TC_PROPERTY(yawDeg, getYawDeg, setYawDeg)
-        TC_PROPERTY(pitchDeg, getPitchDeg, setPitchDeg)
-    TC_REFLECT_END
+    TC_REFLECT(Cannon, Node) {
+        TC_VALUE(yawDeg, getYawDeg, setYawDeg)
+        TC_VALUE(pitchDeg, getPitchDeg, setPitchDeg)
+    }
 
     // unit aim direction in world space
     Vec3 aimDir() const {

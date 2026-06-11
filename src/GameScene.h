@@ -43,10 +43,10 @@ public:
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
 
     using Super = Node;
-    TC_REFLECT(StaticProp)
-        TC_PROPERTY(size, getSize, setSize)
-        TC_PROPERTY(deleteBlock, getFalse, doDelete)
-    TC_REFLECT_END
+    TC_REFLECT(StaticProp, Node) {
+        TC_VALUE(size, getSize, setSize)
+        TC_VALUE(deleteBlock, getFalse, doDelete)
+    }
 
     void setup() override {
         setPos(pos_);
@@ -163,12 +163,12 @@ public:
     void doSpawnWall(bool v)  { if (v) request(true); }
 
     using Super = Node;
-    TC_REFLECT(TowerRoot)
-        TC_FIELD(spawnSize)
-        TC_FIELD(spawnPoints)
-        TC_PROPERTY(spawnBlock, getFalse, doSpawnBlock)
-        TC_PROPERTY(spawnWall, getFalse, doSpawnWall)
-    TC_REFLECT_END
+    TC_REFLECT(TowerRoot, Node) {
+        TC_VALUE(spawnSize)
+        TC_VALUE(spawnPoints)
+        TC_VALUE(spawnBlock, getFalse, doSpawnBlock)
+        TC_VALUE(spawnWall, getFalse, doSpawnWall)
+    }
 
 private:
     void request(bool wall) {
@@ -219,14 +219,14 @@ public:
     void doReload(bool v) { if (v) loadLevel(levelIdx_); }   // reset shots+blocks
 
     using Super = Node;
-    TC_REFLECT(GameScene)
-        TC_PROPERTY_RO(score, getScore)
-        TC_PROPERTY_RO(shots, getShots)
-        TC_PROPERTY_RO(blocksLeft, getBlocksLeft)
-        TC_PROPERTY(level, getLevelNumber, gotoLevel)
-        TC_PROPERTY(editMode, isEditMode, setEditMode)
-        TC_PROPERTY(reloadLevel, getFalse, doReload)
-    TC_REFLECT_END
+    TC_REFLECT(GameScene, Node) {
+        TC_VALUE(score, getScore)
+        TC_VALUE(shots, getShots)
+        TC_VALUE(blocksLeft, getBlocksLeft)
+        TC_VALUE(level, getLevelNumber, gotoLevel)
+        TC_VALUE(editMode, isEditMode, setEditMode)
+        TC_VALUE(reloadLevel, getFalse, doReload)
+    }
 
     int aliveBalls() const {
         int n = 0;
@@ -381,6 +381,9 @@ public:
         firedL_ = cannon_->fired.listen(this, &GameScene::onFired);
         // breakable joints (boss limbs, chains, ropes): crack on every snap
         jointBrokeL_ = defaultWorld().jointBroke.listen([this](JointBreakEventArgs& a) {
+            logNotice() << "[joint broke] type=" << (int)a.type
+                        << " force=" << a.force << "N torque=" << a.torque
+                        << "Nm at(" << a.point.x << "," << a.point.y << "," << a.point.z << ")";
             jukebox().snap.setVolume(clamp(a.force / 40000.0f, 0.3f, 0.9f));
             jukebox().snap.play();
         });
@@ -597,17 +600,18 @@ private:
     static RigidBody* rbOf(const shared_ptr<Node>& n) { return n->getMod<RigidBody>(); }
 
     // Joints are wired ~0.1s after spawn (bodies appear in deferred setup),
-    // during which parts free-fall. Zero their velocities first, or the new
-    // joint arrests that motion in one step — a force spike that instantly
-    // exceeds breakForce on anything heavy (the bridge: ~80 kN vs 12 kN).
-    static void still(std::initializer_list<shared_ptr<Block>> parts) {
-        for (auto& p : parts) {
-            auto* rb = p->getMod<RigidBody>();
-            if (rb && rb->body().isValid()) {
-                rb->body().setLinearVelocity(Vec3(0, 0, 0));
-                rb->body().setAngularVelocity(Vec3(0, 0, 0));
-            }
-        }
+    // during which parts free-fall. On a slow/hitching machine they sag far
+    // below their design pose, and wiring then yanks them back — a force
+    // spike that beats breakForce. So: teleport each part to its intended
+    // pose (relative to the anchor base, which may have marched) and zero
+    // its velocities, THEN wire. Deterministic at any frame rate.
+    static void place(const shared_ptr<Block>& p, const Vec3& worldPos) {
+        auto* rb = p->getMod<RigidBody>();
+        if (!rb || !rb->body().isValid()) return;
+        rb->body().setPosition(worldPos);
+        rb->body().setRotation(Quaternion());
+        rb->body().setLinearVelocity(Vec3(0, 0, 0));
+        rb->body().setAngularVelocity(Vec3(0, 0, 0));
     }
 
     // The L10/11/12 boss: a marching kinematic lower body with a jointed
@@ -647,19 +651,26 @@ private:
 
         callAfter(0.1, [this, pelvis, torso, head, armL, armR, plate, visor, bar]() {
             if (!rbOf(torso) || !rbOf(torso)->body().isValid()) return;   // level changed
-            still({torso, head, armL, armR});
-            if (plate) still({plate, visor});
-            if (bar) still({bar});
+            Vec3 pp = pelvis->getGlobalPos();   // pelvis may have marched
+            place(torso, pp + Vec3(0, 1.25f, 0));
+            place(head,  pp + Vec3(0, 2.10f, 0));
+            place(armL,  pp + Vec3(-0.85f, 1.15f, 0));
+            place(armR,  pp + Vec3( 0.85f, 1.15f, 0));
+            if (plate) {
+                place(plate, pp + Vec3(0, 1.25f, 0.46f));
+                place(visor, pp + Vec3(0, 2.10f, 0.40f));
+            }
+            if (bar) place(bar, pp + Vec3(0, 1.65f, 0.85f));
             const Vec3 Y(0, 1, 0);
-            Vec3 tp = torso->getGlobalPos();
+            Vec3 tp = pp + Vec3(0, 1.25f, 0);
             // Break thresholds are in newtons: ~4-6x what the joint carries
             // statically (m*g, g=12), so marching never snaps anything but a
             // cannonball impact does.
             // waist: stiff — the torso rides the marching legs (holds ~5.8 kN)
             rbOf(torso)->jointTo(pelvis.get(),
-                Joint::swingTwist(pelvis->getGlobalPos() + Vec3(0, 0.72f, 0), Y)
-                    .swing(TAU * 8.0f / 360.0f)
-                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f)
+                Joint::swingTwist(pp + Vec3(0, 0.72f, 0), Y)
+                    .swing(TAU * 25.0f / 360.0f)
+                    .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
                     .breakForce(25000.0f));
             // neck: bobblehead (holds ~1.6 kN)
             rbOf(head)->jointTo(torso.get(),
@@ -682,18 +693,18 @@ private:
                            // strips well before the waist gives (9 < 25 kN)
                 rbOf(plate)->jointTo(torso.get(),
                     Joint::swingTwist(tp + Vec3(0, 0, 0.30f), Y)
-                        .swing(TAU * 5.0f / 360.0f)
-                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)
+                        .swing(TAU * 15.0f / 360.0f)
+                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
                         .breakForce(9000.0f));
                 rbOf(visor)->jointTo(head.get(),
-                    Joint::swingTwist(head->getGlobalPos() + Vec3(0, 0, 0.26f), Y)
-                        .swing(TAU * 5.0f / 360.0f)
-                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)
+                    Joint::swingTwist(pp + Vec3(0, 2.10f, 0.26f), Y)
+                        .swing(TAU * 15.0f / 360.0f)
+                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
                         .breakForce(2500.0f));
             }
             if (bar) {     // motor-driven blade: hinge facing the cannon
                 PhysicsJoint j = rbOf(bar)->jointTo(pelvis.get(),
-                    Joint::hinge(bar->getGlobalPos(), Vec3(0, 0, 1))
+                    Joint::hinge(pp + Vec3(0, 1.65f, 0.85f), Vec3(0, 0, 1))
                         .breakForce(6000.0f));
                 j.setMotorVelocity(3.5f);
             }
@@ -715,7 +726,10 @@ private:
         auto ball = spawnPart(Vec3(0, 3.55f, -6.0f), Vec3(0.62f, 0.62f, 0.62f), wallColor(), 0, false);
         callAfter(0.1, [this, arm, l1, l2, l3, ball]() {
             if (!rbOf(ball) || !rbOf(ball)->body().isValid()) return;
-            still({l1, l2, l3, ball});
+            place(l1,   Vec3(0, 5.05f, -6.0f));
+            place(l2,   Vec3(0, 4.60f, -6.0f));
+            place(l3,   Vec3(0, 4.15f, -6.0f));
+            place(ball, Vec3(0, 3.55f, -6.0f));
             const Vec3 Y(0, 1, 0);
             // each link carries the ball (~2.3 kN static, ~3 kN swinging)
             auto link = [&](shared_ptr<Block> a, shared_ptr<Node> base, Vec3 anchor) {
@@ -750,7 +764,9 @@ private:
         spawnPart(Vec3( 0.9f, 3.23f, -9.5f), Vec3(0.45f, 0.45f, 0.45f), tC, 150, true);
         callAfter(0.1, [this, pyL, pyR, rL, rR, plank]() {
             if (!rbOf(plank) || !rbOf(plank)->body().isValid()) return;
-            still({rL, rR, plank});
+            place(rL,    Vec3(-1.95f, 3.30f, -9.5f));
+            place(rR,    Vec3( 1.95f, 3.30f, -9.5f));
+            place(plank, Vec3(0, 2.90f, -9.5f));
             const Vec3 Y(0, 1, 0);
             // each rope carries half the plank + riders (~3.7 kN static)
             rbOf(rL)->jointTo(pyL.get(),
@@ -790,7 +806,9 @@ private:
                                      Vec3(0.45f, 0.45f, 0.45f), segC, 100, true));
         callAfter(0.1, [this, headM, segs]() {
             if (!rbOf(segs[0]) || !rbOf(segs[0])->body().isValid()) return;
-            for (auto& sg : segs) still({sg});
+            Vec3 hp = headM->getGlobalPos();
+            for (int i = 0; i < (int)segs.size(); i++)
+                place(segs[i], Vec3(hp.x, 1.25f, hp.z - 0.5f - 0.5f * i));
             const Vec3 Y(0, 1, 0);
             for (int i = 0; i < (int)segs.size(); i++) {
                 shared_ptr<Node> base = (i == 0) ? (shared_ptr<Node>)headM

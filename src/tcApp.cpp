@@ -1,6 +1,9 @@
 #include "tcApp.h"
 
 void tcApp::setup() {
+    // TB_FPS: debug — run the whole app at a low frame rate (slow-machine test)
+    if (const char* e = std::getenv("TB_FPS")) setFps((float)atof(e));
+
     setWindowTitle("TRUSS BUSTER");
     imguiSetup();
 

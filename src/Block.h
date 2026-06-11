@@ -37,12 +37,12 @@ public:
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
 
     using Super = Node;
-    TC_REFLECT(Block)
-        TC_PROPERTY(points, getPoints, setPoints)
-        TC_PROPERTY(size, getSize, setSize)
-        TC_PROPERTY_RO(busted, isBusted)
-        TC_PROPERTY(deleteBlock, getFalse, doDelete)
-    TC_REFLECT_END
+    TC_REFLECT(Block, Node) {
+        TC_VALUE(points, getPoints, setPoints)
+        TC_VALUE(size, getSize, setSize)
+        TC_VALUE(busted, isBusted)
+        TC_VALUE(deleteBlock, getFalse, doDelete)
+    }
 
     void setup() override {
         setName(def_.points >= 500 ? "goldBlock" : "block");
