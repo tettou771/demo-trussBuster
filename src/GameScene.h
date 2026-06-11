@@ -127,14 +127,17 @@ private:
         if (phase_ == 0) {
             // dwell at the bottom, then pop: ease-in ends at max speed,
             // launching the rider ballistically
-            tween_->moveTo(def_.posB).duration(0.4f)
+            tween_->moveTo(def_.posB).duration(0.5f)
                    .ease(EaseType::Quad, EaseMode::In)
                    .delay(def_.period).start();
         } else {
             // retract IMMEDIATELY — the launched rider must land on the
-            // floor behind the fence, never on an extended piston
+            // floor behind the fence, never on an extended piston.
+            // delay(0) matters: TweenMod's delay_ persists across reuse, so
+            // without it the bottom-dwell delay leaks into this leg and the
+            // piston hangs at the top.
             tween_->moveTo(def_.pos).duration(0.5f)
-                   .ease(EaseType::Quad, EaseMode::Out).start();
+                   .ease(EaseType::Quad, EaseMode::Out).delay(0.0f).start();
         }
     }
 
@@ -524,6 +527,7 @@ private:
                 // static obstacle: immovable scenery, not a target
                 auto wall = make_shared<StaticProp>(bd.pos, bd.size, bd.color);
                 wall->setName("wall");
+                wall->setEuler(bd.rotEuler);
                 towerRoot_->addChild(wall);
                 continue;
             }

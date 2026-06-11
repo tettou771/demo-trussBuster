@@ -20,6 +20,7 @@ struct BlockDef {
     float    period = 2.0f;                 // full back-and-forth cycle (s)
     EaseType moveEase = EaseType::Linear;
     bool     piston = false;                // pop-up launcher (pos=retracted, posB=extended, period=bottom dwell)
+    Vec3     rotEuler;                      // initial rotation (radians) — ramps etc.
 };
 
 // standard look for static obstacles (dark, reads as scenery)
@@ -252,13 +253,25 @@ inline vector<LevelDef> makeLevels() {
             p.piston = true;
             p.pos  = Vec3(px[i], 0.4f, -6.2f);       // top flush with the floor
             p.posB = Vec3(px[i], 2.0f, -6.2f);       // top pokes above the fence
-            p.size = Vec3(0.9f, 1.2f, 0.9f);
+            p.size = Vec3(1.7f, 1.2f, 1.7f);   // wide pad: riders re-land on it despite drift
             p.period = dwell[i];
             l.blocks.push_back(p);
-            l.blocks.push_back({Vec3(px[i], 1.0f + 0.33f, -6.2f),
-                                Vec3(0.65f, 0.65f, 0.65f),
-                                i == 1 ? goldC : targetC, i == 1 ? 300 : 150});
+            BlockDef r;
+            r.pos = Vec3(px[i], 1.0f + 0.33f, -6.2f);
+            r.size = Vec3(0.65f, 0.65f, 0.65f);
+            r.color = (i == 1) ? goldC : targetC;
+            r.points = (i == 1) ? 300 : 150;
+            l.blocks.push_back(r);
         }
+        // slippery return ramp behind the pads: grazed riders slide back
+        // toward the launchers instead of dying unreachable
+        BlockDef ramp;
+        ramp.wall = true;
+        ramp.pos = Vec3(0, 1.40f, -7.78f);
+        ramp.size = Vec3(6.4f, 0.12f, 1.6f);
+        ramp.rotEuler = Vec3(deg2rad(25.0f), 0, 0);
+        ramp.color = wallColor();
+        l.blocks.push_back(ramp);
         levels.push_back(l);
     }
 
