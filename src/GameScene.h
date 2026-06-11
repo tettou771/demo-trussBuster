@@ -216,7 +216,7 @@ public:
     }
 
     bool getFalse() const { return false; }
-    void doReload(bool v) { if (v) loadLevel(levelIdx_); }   // reset shots+blocks
+    void doReload(bool v) { if (v) { setAutopilot(false); loadLevel(levelIdx_); } }
 
     using Super = Node;
     TC_REFLECT(GameScene, Node) {
@@ -300,6 +300,10 @@ public:
     // jump straight into a level (debug / MCP)
     void gotoLevel(int oneBased) {
         levelIdx_ = (size_t)clamp(oneBased - 1, 0, (int)levels_.size() - 1);
+        // a manual level jump means a human took over — stop the attract-mode
+        // AI, or it keeps shooting the freshly spawned level (the "boss limbs
+        // fall off immediately" mystery: the CPU demo was sniping them)
+        setAutopilot(false);
         loadLevel(levelIdx_);
         phase_ = Phase::Playing;
         if (!jukebox().bgm.isPlaying()) jukebox().bgm.play();
