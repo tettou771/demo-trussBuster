@@ -53,27 +53,19 @@ public:
         renderer_ = addMod<ColliderRenderer>();
         renderer_->setColor(toLinearColor(def_.color));
 
-        // Whenever the NODE moves (gizmo, inspector, setPos from anywhere),
-        // push the transform into the BODY too, so they never diverge.
-        // RigidBody's own body->node sync writes identical values, so the
-        // epsilon check makes those a no-op (bodies keep sleeping).
+        // Whenever the NODE moves, push the transform into the BODY — but
+        // only when the change came from OUTSIDE (gizmo/inspector/setPos).
+        // RigidBody::isSyncing() identifies its own body->node sync writes,
+        // which must NOT bounce back (that froze all rotation once).
         moveL_ = localMatrixChanged.listen([this]() { pushToBody(); });
     }
 
     void pushToBody() {
         auto* rb = getMod<RigidBody>();
-        if (!rb || !rb->body().isValid()) return;
-        Vec3 np = getGlobalPos();
-        Quaternion nq = getQuaternion();
-        Vec3 bp = rb->body().getPosition();
-        Quaternion bq = rb->body().getRotation();
-        bool moved = (np - bp).length() > 1e-4f ||
-                     fabsf(nq.x - bq.x) + fabsf(nq.y - bq.y) +
-                     fabsf(nq.z - bq.z) + fabsf(nq.w - bq.w) > 1e-4f;
-        if (!moved) return;
-        // teleport semantics: position follows, velocity is preserved
-        rb->body().setPosition(np);
-        rb->body().setRotation(nq);
+        if (!rb || !rb->body().isValid() || rb->isSyncing()) return;
+        // external edit: teleport the body (velocity preserved)
+        rb->body().setPosition(getGlobalPos());
+        rb->body().setRotation(getQuaternion());
     }
 
     void update() override {
