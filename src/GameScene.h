@@ -387,19 +387,19 @@ public:
     void update() override {
         float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
 
-        // boss joints tear under a hard hit (cannonball impact speeds are
-        // ~5-12 m/s; the marching drag stays under ~2 m/s)
-        for (auto it = bossJoints_.begin(); it != bossJoints_.end();) {
-            auto part = it->first.lock();
-            if (!part || part->isDead() || !it->second.isValid()) {
-                it = bossJoints_.erase(it);
+        // tearable joints break under a hard hit (cannonball impacts run
+        // ~5-12 m/s; marching/swinging drag stays below each entry's minSpeed)
+        for (auto it = tearJoints_.begin(); it != tearJoints_.end();) {
+            auto part = it->part.lock();
+            if (!part || part->isDead() || !it->joint.isValid()) {
+                it = tearJoints_.erase(it);
                 continue;
             }
             auto* rb = part->getMod<RigidBody>();
             if (rb && rb->body().isValid() &&
-                rb->body().getLinearVelocity().length() > 3.5f) {
-                it->second.remove();   // the part is free — and doomed
-                it = bossJoints_.erase(it);
+                rb->body().getLinearVelocity().length() > it->minSpeed) {
+                it->joint.remove();   // the part is free — and doomed
+                it = tearJoints_.erase(it);
                 continue;
             }
             ++it;
@@ -557,8 +557,17 @@ private:
         shots_ = def.shots;
         blocksTotal_ = targets;
         blocksLeft_ = blocksTotal_;
-        bossJoints_.clear();
-        if (def.boss) buildBoss();
+        tearJoints_.clear();
+        switch (def.special) {
+            case Special::Boss:         buildBoss(false, false); break;
+            case Special::ArmorBoss:    buildBoss(true,  false); break;
+            case Special::WindmillBoss: buildBoss(false, true);  break;
+            case Special::Wrecking:     buildWrecking(); break;
+            case Special::Bridge:       buildBridge();   break;
+            case Special::Snake:        buildSnake();    break;
+            case Special::PinShelf:     buildPinShelf(); break;
+            case Special::None: break;
+        }
         lastBonus_ = 0;
         settle_ = 0;
         aiAiming_ = false;
@@ -583,10 +592,28 @@ private:
         }
     }
 
-    // The L10 boss: a marching kinematic lower body with a jointed dynamic
-    // upper body. Joints are wired one frame later (bodies appear in the
-    // parts' deferred setup). Busting the torso frees everything attached.
-    void buildBoss() {
+    // Spawn one dynamic part. counted=true makes it a scoring target wired
+    // into the level's block bookkeeping; counted=false is loose scenery
+    // (gray, points 0) that pops without touching the counters.
+    shared_ptr<Block> spawnPart(Vec3 pos, Vec3 size, Color c, int pts, bool counted) {
+        BlockDef d;
+        d.pos = pos; d.size = size; d.color = c; d.points = pts;
+        auto b = make_shared<Block>(d);
+        if (counted) {
+            blockL_.push_back(b->busted.listen(this, &GameScene::onBlockBusted));
+            blocksTotal_++;
+            blocksLeft_++;
+        }
+        towerRoot_->addChild(b);
+        return b;
+    }
+
+    static RigidBody* rbOf(const shared_ptr<Node>& n) { return n->getMod<RigidBody>(); }
+
+    // The L10/11/12 boss: a marching kinematic lower body with a jointed
+    // dynamic upper body. Joints are wired one frame later (bodies appear in
+    // the parts' deferred setup). All joints tear under a hard enough hit.
+    void buildBoss(bool armored, bool windmill) {
         BlockDef legs;
         legs.mover = true;
         legs.pos  = Vec3(-1.8f, 1.7f, -6.3f);
@@ -597,52 +624,176 @@ private:
         auto pelvis = make_shared<MovingProp>(legs);
         towerRoot_->addChild(pelvis);
 
-        auto part = [&](Vec3 pos, Vec3 size, Color c, int pts) {
-            BlockDef d;
-            d.pos = pos; d.size = size; d.color = c; d.points = pts;
-            auto b = make_shared<Block>(d);
-            blockL_.push_back(b->busted.listen(this, &GameScene::onBlockBusted));
-            towerRoot_->addChild(b);
-            blocksTotal_++;
-            blocksLeft_++;
-            return b;
-        };
         float bx = legs.pos.x, bz = legs.pos.z;
-        auto torso = part(Vec3(bx, 2.95f, bz), Vec3(1.1f, 1.0f, 0.55f),
-                          Color(0.36f, 0.40f, 0.85f), 200);
-        auto head  = part(Vec3(bx, 3.80f, bz), Vec3(0.55f, 0.55f, 0.55f),
-                          Color(1.0f, 0.82f, 0.1f), 500);
-        auto armL  = part(Vec3(bx - 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
-                          Color(0.95f, 0.55f, 0.30f), 150);
-        auto armR  = part(Vec3(bx + 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
-                          Color(0.95f, 0.55f, 0.30f), 150);
+        auto torso = spawnPart(Vec3(bx, 2.95f, bz), Vec3(1.1f, 1.0f, 0.55f),
+                               Color(0.36f, 0.40f, 0.85f), 200, true);
+        auto head  = spawnPart(Vec3(bx, 3.80f, bz), Vec3(0.55f, 0.55f, 0.55f),
+                               Color(1.0f, 0.82f, 0.1f), 500, true);
+        auto armL  = spawnPart(Vec3(bx - 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
+                               Color(0.95f, 0.55f, 0.30f), 150, true);
+        auto armR  = spawnPart(Vec3(bx + 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
+                               Color(0.95f, 0.55f, 0.30f), 150, true);
+        shared_ptr<Block> plate, visor, bar;
+        if (armored) {
+            plate = spawnPart(Vec3(bx, 2.95f, bz + 0.46f), Vec3(1.25f, 1.15f, 0.16f),
+                              wallColor(), 0, false);
+            visor = spawnPart(Vec3(bx, 3.80f, bz + 0.40f), Vec3(0.62f, 0.62f, 0.14f),
+                              wallColor(), 0, false);
+        }
+        if (windmill) {
+            bar = spawnPart(Vec3(bx, 3.35f, bz + 0.85f), Vec3(2.6f, 0.28f, 0.2f),
+                            wallColor(), 0, false);
+        }
 
-        callAfter(0.1, [this, pelvis, torso, head, armL, armR]() {
-            auto rb = [](const shared_ptr<Node>& n) { return n->getMod<RigidBody>(); };
-            if (!rb(torso) || !rb(torso)->body().isValid()) return;   // level changed
+        callAfter(0.1, [this, pelvis, torso, head, armL, armR, plate, visor, bar]() {
+            if (!rbOf(torso) || !rbOf(torso)->body().isValid()) return;   // level changed
             const Vec3 Y(0, 1, 0);
             Vec3 tp = torso->getGlobalPos();
-            // BREAKABLE joints: a hard enough hit (see update) tears them.
             // waist: stiff — the torso rides the marching legs
-            bossJoints_.push_back({torso, rb(torso)->jointTo(pelvis.get(),
+            tearJoints_.push_back({torso, rbOf(torso)->jointTo(pelvis.get(),
                 Joint::swingTwist(pelvis->getGlobalPos() + Vec3(0, 0.72f, 0), Y)
                     .swing(TAU * 8.0f / 360.0f)
-                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f))});
+                    .twist(-TAU * 8.0f / 360.0f, TAU * 8.0f / 360.0f)), 3.5f});
             // neck: bobblehead
-            bossJoints_.push_back({head, rb(head)->jointTo(torso.get(),
+            tearJoints_.push_back({head, rbOf(head)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(0, 0.55f, 0), Y)
                     .swing(TAU * 25.0f / 360.0f)
-                    .twist(-TAU * 30.0f / 360.0f, TAU * 30.0f / 360.0f))});
+                    .twist(-TAU * 30.0f / 360.0f, TAU * 30.0f / 360.0f)), 3.5f});
             // shoulders: wide swing — the arms flail as it marches
-            bossJoints_.push_back({armL, rb(armL)->jointTo(torso.get(),
+            tearJoints_.push_back({armL, rbOf(armL)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(-0.72f, 0.42f, 0), Y)
                     .swing(TAU * 65.0f / 360.0f)
-                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f))});
-            bossJoints_.push_back({armR, rb(armR)->jointTo(torso.get(),
+                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)), 3.5f});
+            tearJoints_.push_back({armR, rbOf(armR)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(0.72f, 0.42f, 0), Y)
-                    .swing(TAU * 65.0f / 360.0f)
-                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f))});
+                    .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)
+                    .swing(TAU * 65.0f / 360.0f)), 3.5f});
+            if (plate) {   // armor hangs stiff in front; soaks the impact
+                tearJoints_.push_back({plate, rbOf(plate)->jointTo(torso.get(),
+                    Joint::swingTwist(tp + Vec3(0, 0, 0.30f), Y)
+                        .swing(TAU * 5.0f / 360.0f)
+                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)), 3.0f});
+                tearJoints_.push_back({visor, rbOf(visor)->jointTo(head.get(),
+                    Joint::swingTwist(head->getGlobalPos() + Vec3(0, 0, 0.26f), Y)
+                        .swing(TAU * 5.0f / 360.0f)
+                        .twist(-TAU * 5.0f / 360.0f, TAU * 5.0f / 360.0f)), 3.0f});
+            }
+            if (bar) {     // motor-driven blade: hinge facing the cannon
+                PhysicsJoint j = rbOf(bar)->jointTo(pelvis.get(),
+                    Joint::hinge(bar->getGlobalPos(), Vec3(0, 0, 1)));
+                j.setMotorVelocity(3.5f);
+                // bar center sits on the hinge axis, so its linear speed stays
+                // ~0 while spinning — a solid hit still tears it
+                tearJoints_.push_back({bar, j, 4.0f});
+            }
         });
+    }
+
+    // L13: wrecking ball on a chain, guarding the gold row beneath it.
+    void buildWrecking() {
+        auto arm = make_shared<StaticProp>(Vec3(0, 5.5f, -5.3f),
+                                           Vec3(0.3f, 0.3f, 1.8f), wallColor());
+        arm->setName("wall");
+        towerRoot_->addChild(arm);
+        // chain hangs straight down (offset spawning made the joints snap
+        // together violently and tear themselves); the swing comes from an
+        // initial shove after wiring
+        auto l1 = spawnPart(Vec3(0, 5.05f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
+        auto l2 = spawnPart(Vec3(0, 4.60f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
+        auto l3 = spawnPart(Vec3(0, 4.15f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
+        auto ball = spawnPart(Vec3(0, 3.55f, -6.0f), Vec3(0.62f, 0.62f, 0.62f), wallColor(), 0, false);
+        callAfter(0.1, [this, arm, l1, l2, l3, ball]() {
+            if (!rbOf(ball) || !rbOf(ball)->body().isValid()) return;
+            const Vec3 Y(0, 1, 0);
+            auto link = [&](shared_ptr<Block> a, shared_ptr<Node> base, Vec3 anchor) {
+                tearJoints_.push_back({a, rbOf(a)->jointTo(base.get(),
+                    Joint::swingTwist(anchor, Y).swing(TAU * 40.0f / 360.0f)
+                        .twist(-TAU * 10.0f / 360.0f, TAU * 10.0f / 360.0f)), 5.5f});
+            };
+            link(l1, arm, Vec3(0, 5.35f, -6.0f));
+            link(l2, l1, l1->getGlobalPos() + Vec3(0, -0.24f, 0));
+            link(l3, l2, l2->getGlobalPos() + Vec3(0, -0.24f, 0));
+            link(ball, l3, l3->getGlobalPos() + Vec3(0, -0.26f, 0));
+            // start the pendulum
+            rbOf(ball)->body().setLinearVelocity(Vec3(2.2f, 0, 0));
+        });
+    }
+
+    // L14: plank bridge hung between pylons by block-chain ropes.
+    void buildBridge() {
+        // pylons stand on the GROUND behind the stage — whatever falls off
+        // the plank drops into the void and busts
+        auto pyL = make_shared<StaticProp>(Vec3(-2.3f, 1.85f, -9.5f), Vec3(0.35f, 3.7f, 0.5f), wallColor());
+        auto pyR = make_shared<StaticProp>(Vec3( 2.3f, 1.85f, -9.5f), Vec3(0.35f, 3.7f, 0.5f), wallColor());
+        pyL->setName("wall"); pyR->setName("wall");
+        towerRoot_->addChild(pyL); towerRoot_->addChild(pyR);
+        auto rL = spawnPart(Vec3(-1.95f, 3.30f, -9.5f), Vec3(0.13f, 0.34f, 0.13f), wallColor(), 0, false);
+        auto rR = spawnPart(Vec3( 1.95f, 3.30f, -9.5f), Vec3(0.13f, 0.34f, 0.13f), wallColor(), 0, false);
+        auto plank = spawnPart(Vec3(0, 2.90f, -9.5f), Vec3(3.4f, 0.16f, 0.9f), wallColor(), 0, false);
+        Color goldC(1.0f, 0.82f, 0.1f), tC(0.95f, 0.85f, 0.30f);
+        spawnPart(Vec3(-0.9f, 3.23f, -9.5f), Vec3(0.45f, 0.45f, 0.45f), tC, 150, true);
+        spawnPart(Vec3( 0.0f, 3.23f, -9.5f), Vec3(0.45f, 0.45f, 0.45f), goldC, 300, true);
+        spawnPart(Vec3( 0.9f, 3.23f, -9.5f), Vec3(0.45f, 0.45f, 0.45f), tC, 150, true);
+        callAfter(0.1, [this, pyL, pyR, rL, rR, plank]() {
+            if (!rbOf(plank) || !rbOf(plank)->body().isValid()) return;
+            const Vec3 Y(0, 1, 0);
+            tearJoints_.push_back({rL, rbOf(rL)->jointTo(pyL.get(),
+                Joint::swingTwist(Vec3(-2.1f, 3.60f, -9.5f), Y)
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
+            tearJoints_.push_back({rR, rbOf(rR)->jointTo(pyR.get(),
+                Joint::swingTwist(Vec3(2.1f, 3.60f, -9.5f), Y)
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
+            tearJoints_.push_back({plank, rbOf(plank)->jointTo(rL.get(),
+                Joint::swingTwist(Vec3(-1.85f, 3.05f, -9.5f), Y)
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
+            tearJoints_.push_back({plank, rbOf(plank)->jointTo(rR.get(),
+                Joint::swingTwist(Vec3(1.85f, 3.05f, -9.5f), Y)
+                    .swing(TAU * 30.0f / 360.0f).twist(0, 0)), 3.5f});
+        });
+    }
+
+    // L15: marching snake — jointed target segments towed by a kinematic head.
+    void buildSnake() {
+        BlockDef h;
+        h.mover = true;
+        h.pos  = Vec3(-2.2f, 1.45f, -5.6f);
+        h.posB = Vec3( 2.2f, 1.45f, -5.6f);
+        h.size = Vec3(0.55f, 0.6f, 0.55f);
+        h.period = 11.0f;
+        h.moveEase = EaseType::Quad;
+        auto headM = make_shared<MovingProp>(h);
+        towerRoot_->addChild(headM);
+        Color segC(0.55f, 0.80f, 0.95f);
+        vector<shared_ptr<Block>> segs;
+        for (int i = 0; i < 5; i++)
+            segs.push_back(spawnPart(Vec3(h.pos.x, 1.25f, -6.1f - 0.5f * i),
+                                     Vec3(0.45f, 0.45f, 0.45f), segC, 100, true));
+        callAfter(0.1, [this, headM, segs]() {
+            if (!rbOf(segs[0]) || !rbOf(segs[0])->body().isValid()) return;
+            const Vec3 Y(0, 1, 0);
+            for (int i = 0; i < (int)segs.size(); i++) {
+                shared_ptr<Node> base = (i == 0) ? (shared_ptr<Node>)headM
+                                                 : (shared_ptr<Node>)segs[i - 1];
+                Vec3 a = (segs[i]->getGlobalPos() + base->getGlobalPos()) * 0.5f;
+                tearJoints_.push_back({segs[i], rbOf(segs[i])->jointTo(base.get(),
+                    Joint::swingTwist(a, Y).swing(TAU * 50.0f / 360.0f)
+                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)), 3.5f});
+            }
+        });
+    }
+
+    // L16: no joints at all — a shelf resting on two thin pillars near the
+    // edge. Pure stacking: shoot the right pillar, gravity does the rest.
+    void buildPinShelf() {
+        spawnPart(Vec3(1.7f, 1.65f, -6.0f), Vec3(0.22f, 1.3f, 0.6f), wallColor(), 0, false);
+        spawnPart(Vec3(2.9f, 1.65f, -6.0f), Vec3(0.22f, 1.3f, 0.6f), wallColor(), 0, false);
+        spawnPart(Vec3(2.3f, 2.39f, -6.0f), Vec3(1.8f, 0.16f, 0.9f), wallColor(), 0, false);
+        Color goldC(1.0f, 0.82f, 0.1f);
+        spawnPart(Vec3(1.95f, 2.73f, -6.0f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300, true);
+        spawnPart(Vec3(2.65f, 2.73f, -6.0f), Vec3(0.5f, 0.5f, 0.5f), goldC, 300, true);
+        // a freebie on the floor so a stray shot still scores something
+        spawnPart(Vec3(-1.6f, 1.25f, -6.0f), Vec3(0.5f, 0.5f, 0.5f),
+                  Color(0.55f, 0.80f, 0.95f), 100, true);
     }
 
     void onFired(Cannon::FireArgs& args) {
@@ -796,7 +947,8 @@ private:
     EventListener         firedL_, spawnL_;
     bool                  editMode_ = false;
     vector<EventListener> blockL_;
-    vector<pair<weak_ptr<Node>, PhysicsJoint>> bossJoints_;
+    struct TearEntry { weak_ptr<Node> part; PhysicsJoint joint; float minSpeed; };
+    vector<TearEntry> tearJoints_;
 
     vector<LevelDef> levels_;
     size_t levelIdx_ = 0;

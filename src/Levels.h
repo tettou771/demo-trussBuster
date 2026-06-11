@@ -36,11 +36,14 @@ inline Color toLinearColor(const Color& c) {
 // bust themselves (they're being dragged around with the gizmo)
 inline bool& stageEditMode() { static bool b = false; return b; }
 
+// Levels with jointed/special structures get built procedurally in GameScene.
+enum class Special { None, Boss, ArmorBoss, WindmillBoss, Wrecking, Bridge, Snake, PinShelf };
+
 struct LevelDef {
     string           name;
     int              shots;
     vector<BlockDef> blocks;
-    bool             boss = false;   // spawn the jointed humanoid (GameScene::buildBoss)
+    Special          special = Special::None;
 };
 
 constexpr float PLATFORM_TOP = 1.0f;
@@ -280,7 +283,59 @@ inline vector<LevelDef> makeLevels() {
         // stage — kinematic legs (not a target), jointed torso/arms/head.
         // Tear it apart. (Geometry built in GameScene::buildBoss.)
         LevelDef l{"BOSS?!", 6, {}};
-        l.boss = true;
+        l.special = Special::Boss;
+        levels.push_back(l);
+    }
+
+    {   // Level 11: the boss again — now ARMORED. Gray plates (not targets)
+        // hang on breakable joints in front of torso and head; they soak the
+        // cannonball's energy, so strip the armor first.
+        LevelDef l{"ARMORED", 6, {}};
+        l.special = Special::ArmorBoss;
+        levels.push_back(l);
+    }
+
+    {   // Level 12: the boss carries a motor-driven spinning bar that bats
+        // cannonballs away — time your shots through the blade.
+        LevelDef l{"WINDMILL", 8, {}};
+        l.special = Special::WindmillBoss;
+        levels.push_back(l);
+    }
+
+    {   // Level 13: a wrecking ball hangs from a gantry, guarding the gold
+        // row behind it. Cut the chain and the guardian crushes its own wards.
+        LevelDef l{"GUARDIAN", 5, {}};
+        // gantry post (visual; the arm + chain are built in GameScene)
+        l.blocks.push_back({Vec3(0, 3.3f, -4.6f), Vec3(0.3f, 4.6f, 0.3f),
+                            wallColor(), 0, true});
+        Color goldC(1.0f, 0.82f, 0.1f);
+        for (float x : {-0.9f, 0.0f, 0.9f})
+            l.blocks.push_back({Vec3(x, 1.25f, -6.0f), Vec3(0.5f, 0.5f, 0.5f),
+                                goldC, 200});
+        l.special = Special::Wrecking;
+        levels.push_back(l);
+    }
+
+    {   // Level 14: a plank bridge hangs between two pylons by block-chain
+        // ropes, targets standing on it. Shoot targets directly — or cut a
+        // rope and dump everything at once.
+        LevelDef l{"ROPEWAY", 4, {}};
+        l.special = Special::Bridge;
+        levels.push_back(l);
+    }
+
+    {   // Level 15: a marching snake of jointed segments. Where you cut
+        // matters: sever near the head and the whole body rips free.
+        LevelDef l{"SNAKE", 7, {}};
+        l.special = Special::Snake;
+        levels.push_back(l);
+    }
+
+    {   // Level 16: two thin pillars prop a shelf near the edge — no joints,
+        // pure stacking. Pick the right pillar and the shelf dumps its gold
+        // over the side.
+        LevelDef l{"THE SHELF", 3, {}};
+        l.special = Special::PinShelf;
         levels.push_back(l);
     }
 
