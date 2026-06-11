@@ -278,7 +278,7 @@ public:
         addChild(platform);
 
         auto pedestal = make_shared<StaticProp>(Vec3(0, 0.25f, 6.5f), Vec3(1.5f, 0.5f, 1.5f),
-                                                Color(0.18f, 0.19f, 0.24f));
+                                                Color(0.42f, 0.44f, 0.50f));
         pedestal->setName("pedestal");
         addChild(pedestal);
 

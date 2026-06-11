@@ -17,7 +17,7 @@ struct BlockDef {
 };
 
 // standard look for static obstacles (dark, reads as scenery)
-inline Color wallColor() { return Color(0.278f, 0.294f, 0.353f); }
+inline Color wallColor() { return Color(0.565f, 0.585f, 0.645f); }
 
 // meshPbr treats baseColor as LINEAR; our palette is authored in sRGB.
 // Convert at the material boundary or every color washes out desaturated.
