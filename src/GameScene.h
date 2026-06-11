@@ -320,7 +320,10 @@ public:
             return;   // no sim, no autopilot, no game-over logic
         }
 
-        defaultWorld().update(dt);
+        // low fps (e.g. mobile web) inflates dt; substep collisions so fast
+        // balls don't tunnel through thin blocks at ~50 ms steps
+        int substeps = std::min(4, std::max(1, (int)ceilf(dt / (1.0f / 60.0f))));
+        defaultWorld().update(dt, substeps);
 
         // manual aiming with held arrow keys
         if (phase_ == Phase::Playing && !autopilot_) {
