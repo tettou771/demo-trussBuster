@@ -36,7 +36,7 @@ public:
     void setSize(const Vec3& s) {
         size_ = s;
         if (!renderer_) return;   // before setup: just store
-        addMod<RigidBody>(ColliderShape::box(s), BodyType::Static);
+        addMod<RigidBody>(ColliderShape::box(s), BodyType::Kinematic);
         renderer_->invalidateMesh();
     }
     bool getFalse() const { return false; }
@@ -50,7 +50,10 @@ public:
 
     void setup() override {
         setPos(pos_);
-        addMod<RigidBody>(ColliderShape::box(size_), BodyType::Static);
+        // Kinematic, not Static: RigidBody's kinematic mode syncs node->body
+        // every frame, so gizmo/inspector edits move the COLLIDER too (a
+        // static body would leave its collision behind)
+        addMod<RigidBody>(ColliderShape::box(size_), BodyType::Kinematic);
         renderer_ = addMod<FlatRenderer>();
         renderer_->setColor(color_);
     }

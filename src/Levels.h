@@ -152,18 +152,18 @@ inline vector<LevelDef> makeLevels() {
     // Mechanics verified by MCP playtest (see load_custom_level workflow).
     // ------------------------------------------------------------------
 
-    {   // Level 6: thread the shield gap for the gold pair; tall STATIC
-        // pillars at the front edge shade the corner blues from direct fire —
-        // carom a shield slab into them (edge hit) instead
+    {   // Level 6 (layout by toru, baked from the live node tree):
+        // low wide barriers guard the front edge; corner blues fall to
+        // shield-slab caroms, gold pair to a seam shot through the gap
         LevelDef l{"NEEDLE EYE", 6, {}};
         Color shield(0.85f, 0.45f, 0.40f), pairC(0.95f, 0.85f, 0.30f);
         Color single(0.55f, 0.80f, 0.95f);
         l.blocks.push_back({Vec3(-1.0f, 1.55f, -5.0f), Vec3(0.8f, 1.1f, 0.3f), shield, 100});
         l.blocks.push_back({Vec3( 1.0f, 1.55f, -5.0f), Vec3(0.8f, 1.1f, 0.3f), shield, 100});
-        l.blocks.push_back({Vec3(-0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
-        l.blocks.push_back({Vec3( 0.26f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3(-0.30f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
+        l.blocks.push_back({Vec3( 0.30f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         for (float sgn : {-1.0f, 1.0f}) {
-            l.blocks.push_back({Vec3(sgn * 2.0f, 1.95f, -4.0f), Vec3(0.9f, 1.9f, 0.25f),
+            l.blocks.push_back({Vec3(sgn * 2.2f, 1.4f, -4.1f), Vec3(2.0f, 0.8f, 0.4f),
                                 wallColor(), 0, true});
             l.blocks.push_back({Vec3(sgn * 2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f),
                                 single, 100});
