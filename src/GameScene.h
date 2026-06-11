@@ -305,18 +305,9 @@ public:
         float dt = std::min(0.05f, std::max(0.0f, (float)getDeltaTime()));
 
         if (editMode_) {
-            // stage editing: physics paused; push gizmo/inspector edits of the
-            // node transforms INTO the bodies (normally RigidBody syncs the
-            // other way and would overwrite them)
-            for (auto& c : towerRoot_->getChildren()) {
-                if (c->isDead()) continue;
-                if (auto* rb = c->getMod<RigidBody>()) {
-                    rb->body().setPosition(c->getPos());
-                    rb->body().setRotation(c->getQuaternion());
-                    rb->body().setLinearVelocity(Vec3(0, 0, 0));
-                    rb->body().setAngularVelocity(Vec3(0, 0, 0));
-                }
-            }
+            // stage editing: physics paused. Node edits reach the bodies
+            // event-driven (Block::pushToBody on localMatrixChanged; walls
+            // are kinematic and follow on their own).
             return;   // no sim, no autopilot, no game-over logic
         }
 
