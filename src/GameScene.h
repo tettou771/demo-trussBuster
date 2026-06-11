@@ -596,6 +596,20 @@ private:
 
     static RigidBody* rbOf(const shared_ptr<Node>& n) { return n->getMod<RigidBody>(); }
 
+    // Joints are wired ~0.1s after spawn (bodies appear in deferred setup),
+    // during which parts free-fall. Zero their velocities first, or the new
+    // joint arrests that motion in one step — a force spike that instantly
+    // exceeds breakForce on anything heavy (the bridge: ~80 kN vs 12 kN).
+    static void still(std::initializer_list<shared_ptr<Block>> parts) {
+        for (auto& p : parts) {
+            auto* rb = p->getMod<RigidBody>();
+            if (rb && rb->body().isValid()) {
+                rb->body().setLinearVelocity(Vec3(0, 0, 0));
+                rb->body().setAngularVelocity(Vec3(0, 0, 0));
+            }
+        }
+    }
+
     // The L10/11/12 boss: a marching kinematic lower body with a jointed
     // dynamic upper body. Joints are wired one frame later (bodies appear in
     // the parts' deferred setup). All joints tear under a hard enough hit.
@@ -633,6 +647,9 @@ private:
 
         callAfter(0.1, [this, pelvis, torso, head, armL, armR, plate, visor, bar]() {
             if (!rbOf(torso) || !rbOf(torso)->body().isValid()) return;   // level changed
+            still({torso, head, armL, armR});
+            if (plate) still({plate, visor});
+            if (bar) still({bar});
             const Vec3 Y(0, 1, 0);
             Vec3 tp = torso->getGlobalPos();
             // Break thresholds are in newtons: ~4-6x what the joint carries
@@ -698,6 +715,7 @@ private:
         auto ball = spawnPart(Vec3(0, 3.55f, -6.0f), Vec3(0.62f, 0.62f, 0.62f), wallColor(), 0, false);
         callAfter(0.1, [this, arm, l1, l2, l3, ball]() {
             if (!rbOf(ball) || !rbOf(ball)->body().isValid()) return;
+            still({l1, l2, l3, ball});
             const Vec3 Y(0, 1, 0);
             // each link carries the ball (~2.3 kN static, ~3 kN swinging)
             auto link = [&](shared_ptr<Block> a, shared_ptr<Node> base, Vec3 anchor) {
@@ -732,6 +750,7 @@ private:
         spawnPart(Vec3( 0.9f, 3.23f, -9.5f), Vec3(0.45f, 0.45f, 0.45f), tC, 150, true);
         callAfter(0.1, [this, pyL, pyR, rL, rR, plank]() {
             if (!rbOf(plank) || !rbOf(plank)->body().isValid()) return;
+            still({rL, rR, plank});
             const Vec3 Y(0, 1, 0);
             // each rope carries half the plank + riders (~3.7 kN static)
             rbOf(rL)->jointTo(pyL.get(),
@@ -771,6 +790,7 @@ private:
                                      Vec3(0.45f, 0.45f, 0.45f), segC, 100, true));
         callAfter(0.1, [this, headM, segs]() {
             if (!rbOf(segs[0]) || !rbOf(segs[0])->body().isValid()) return;
+            for (auto& sg : segs) still({sg});
             const Vec3 Y(0, 1, 0);
             for (int i = 0; i < (int)segs.size(); i++) {
                 shared_ptr<Node> base = (i == 0) ? (shared_ptr<Node>)headM
