@@ -19,6 +19,12 @@ struct BlockDef {
 // standard look for static obstacles (dark, reads as scenery)
 inline Color wallColor() { return Color(0.278f, 0.294f, 0.353f); }
 
+// meshPbr treats baseColor as LINEAR; our palette is authored in sRGB.
+// Convert at the material boundary or every color washes out desaturated.
+inline Color toLinearColor(const Color& c) {
+    return Color(srgbToLinear(c.r), srgbToLinear(c.g), srgbToLinear(c.b), c.a);
+}
+
 // global stage-edit flag: while on, physics is paused and blocks must not
 // bust themselves (they're being dragged around with the gizmo)
 inline bool& stageEditMode() { static bool b = false; return b; }

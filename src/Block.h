@@ -4,7 +4,6 @@
 #include <tcxPhysics.h>
 #include "Levels.h"
 #include "ChipTunes.h"
-#include "ColliderPicker.h"
 
 using namespace std;
 using namespace tc;
@@ -32,7 +31,7 @@ public:
         auto* rb = addMod<RigidBody>(ColliderShape::box(s), BodyType::Dynamic, 800.0f);
         rb->setFriction(0.65f).setRestitution(0.05f);
         renderer_ = addMod<ColliderRenderer>();   // recreate: drops the cached mesh
-        renderer_->setColor(def_.color);
+        renderer_->setColor(toLinearColor(def_.color));
     }
     bool getFalse() const { return false; }
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
@@ -52,8 +51,7 @@ public:
                                      BodyType::Dynamic, 800.0f);
         rb->setFriction(0.65f).setRestitution(0.05f);
         renderer_ = addMod<ColliderRenderer>();
-        renderer_->setColor(def_.color);
-        addMod<ColliderPicker>();
+        renderer_->setColor(toLinearColor(def_.color));
     }
 
     void update() override {
@@ -81,7 +79,7 @@ public:
 private:
     void bust() {
         busted_ = true;
-        renderer_->setColor(Color(1.0f, 1.0f, 0.92f));
+        renderer_->setColor(toLinearColor(Color(1.0f, 1.0f, 0.92f)));
         if (def_.points >= 500) jukebox().goldBust.play();
         else                    jukebox().bust.play();
         busted.notify(def_.points);

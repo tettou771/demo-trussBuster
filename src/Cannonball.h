@@ -3,7 +3,6 @@
 #include <TrussC.h>
 #include <tcxPhysics.h>
 #include "ChipTunes.h"
-#include "ColliderPicker.h"
 
 using namespace std;
 using namespace tc;
@@ -23,8 +22,7 @@ public:
                                      BodyType::Dynamic, 9000.0f);
         rb->setFriction(0.5f).setRestitution(0.25f);
         rb->body().setLinearVelocity(velocity_);
-        addMod<ColliderRenderer>()->setColor(Color(0.22f, 0.23f, 0.28f));
-        addMod<ColliderPicker>();
+        addMod<ColliderRenderer>()->setColor(toLinearColor(Color(0.22f, 0.23f, 0.28f)));
         hitL_ = rb->onCollisionBegan.listen(this, &Cannonball::onHit);
     }
 

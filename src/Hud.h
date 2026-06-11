@@ -76,7 +76,7 @@ private:
         float W = getWidth();
 
         // logo with a slow color cycle; never wider than the window
-        Color logoCol = Color::fromHSB(fmodf(t * 0.07f, 1.0f), 0.45f, 1.0f);
+        Color logoCol = Color::fromOKLCH(0.85f, 0.13f, fmodf(t * 0.07f, 1.0f));
         float logoScale = std::min(8.0f, (W - 40) / (12 * 8.0f));   // 12 chars
         float H = getHeight();
         centerShadow("TRUSS BUSTER", H * 0.18f, logoScale, logoCol);
@@ -180,7 +180,7 @@ private:
         float t = getElapsedTimef(), k = uiScale(), H = getHeight();
         centerShadow("LEVEL " + to_string(scene_->getLevelNumber()) + " CLEAR!",
                      H * 0.36f, 5.0f * k,
-                     Color::fromHSB(fmodf(t * 0.3f, 1.0f), 0.5f, 1.0f));
+                     Color::fromOKLCH(0.85f, 0.14f, fmodf(t * 0.3f, 1.0f)));
         center("SHOT BONUS  +" + to_string(scene_->getLastBonus()),
                H * 0.36f + 70 * k, 2.5f * k, Color(1.0f, 0.95f, 0.6f));
         center("SCORE  " + pad(scene_->getScore()),
@@ -202,7 +202,7 @@ private:
         dim(0.35f);
         float t = getElapsedTimef(), k = uiScale(), H = getHeight();
         centerShadow("ALL LEVELS CLEAR!", H * 0.28f, 6.0f * k,
-                     Color::fromHSB(fmodf(t * 0.5f, 1.0f), 0.7f, 1.0f));
+                     Color::fromOKLCH(0.85f, 0.17f, fmodf(t * 0.5f, 1.0f)));
         center("FINAL SCORE", H * 0.28f + 100 * k, 3.0f * k, Color(0.95f, 0.95f, 1.0f));
         centerShadow(pad(scene_->getScore()), H * 0.28f + 150 * k, 5.0f * k,
                      Color(1.0f, 0.85f, 0.3f));

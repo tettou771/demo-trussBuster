@@ -3,7 +3,6 @@
 #include <TrussC.h>
 #include <tcxPhysics.h>
 #include "ChipTunes.h"
-#include "ColliderPicker.h"
 #include "Levels.h"
 #include "Block.h"
 #include "Cannonball.h"
@@ -38,7 +37,7 @@ public:
         if (!renderer_) return;   // before setup: just store
         addMod<RigidBody>(ColliderShape::box(s), BodyType::Kinematic);
         renderer_ = addMod<ColliderRenderer>();   // recreate: drops the cached mesh
-        renderer_->setColor(color_);
+        renderer_->setColor(toLinearColor(color_));
     }
     bool getFalse() const { return false; }
     void doDelete(bool v) { if (v) destroy(); }   // inspector checkbox = button
@@ -56,8 +55,7 @@ public:
         // static body would leave its collision behind)
         addMod<RigidBody>(ColliderShape::box(size_), BodyType::Kinematic);
         renderer_ = addMod<ColliderRenderer>();
-        renderer_->setColor(color_);
-        addMod<ColliderPicker>();
+        renderer_->setColor(toLinearColor(color_));
     }
 
 private:
