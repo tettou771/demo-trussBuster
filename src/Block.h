@@ -29,7 +29,7 @@ public:
         // re-create the body with the new collider (addMod replaces the old
         // mod; its onDestroy removes the old body from the world)
         auto* rb = addMod<RigidBody>(ColliderShape::box(s), BodyType::Dynamic, 800.0f);
-        rb->setFriction(0.65f).setRestitution(0.05f);
+        rb->setFriction(def_.friction).setRestitution(0.05f);
         renderer_ = addMod<ColliderRenderer>();   // recreate: drops the cached mesh
         renderer_->setColor(toLinearColor(def_.color));
     }
@@ -49,7 +49,7 @@ public:
         setPos(def_.pos);
         auto* rb = addMod<RigidBody>(ColliderShape::box(def_.size),
                                      BodyType::Dynamic, 800.0f);
-        rb->setFriction(0.65f).setRestitution(0.05f);
+        rb->setFriction(def_.friction).setRestitution(0.05f);
         renderer_ = addMod<ColliderRenderer>();
         renderer_->setColor(toLinearColor(def_.color));
 

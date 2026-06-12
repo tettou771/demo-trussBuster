@@ -552,10 +552,8 @@ private:
         blocksTotal_ = targets;
         blocksLeft_ = blocksTotal_;
         switch (def.special) {
-            case Special::Boss:         buildBoss(false, false); break;
-            case Special::ArmorBoss:    buildBoss(true,  false); break;
-            case Special::WindmillBoss: buildBoss(false, true);  break;
-            case Special::Wrecking:     buildWrecking(); break;
+            case Special::Boss:         buildBoss(false); break;
+            case Special::WindmillBoss: buildBoss(true);  break;
             case Special::Bridge:       buildBridge();   break;
             case Special::Snake:        buildSnake();    break;
             case Special::PinShelf:     buildPinShelf(); break;
@@ -588,9 +586,11 @@ private:
     // Spawn one dynamic part. counted=true makes it a scoring target wired
     // into the level's block bookkeeping; counted=false is loose scenery
     // (gray, points 0) that pops without touching the counters.
-    shared_ptr<Block> spawnPart(Vec3 pos, Vec3 size, Color c, int pts, bool counted) {
+    shared_ptr<Block> spawnPart(Vec3 pos, Vec3 size, Color c, int pts, bool counted,
+                                float friction = 0.65f) {
         BlockDef d;
         d.pos = pos; d.size = size; d.color = c; d.points = pts;
+        d.friction = friction;
         auto b = make_shared<Block>(d);
         if (counted) {
             blockL_.push_back(b->busted.listen(this, &GameScene::onBlockBusted));
@@ -621,7 +621,7 @@ private:
     // The L10/11/12 boss: a marching kinematic lower body with a jointed
     // dynamic upper body. Joints are wired one frame later (bodies appear in
     // the parts' deferred setup). All joints tear under a hard enough hit.
-    void buildBoss(bool armored, bool windmill) {
+    void buildBoss(bool windmill) {
         BlockDef legs;
         legs.mover = true;
         legs.pos  = Vec3(-1.8f, 1.7f, -6.3f);
@@ -641,30 +641,23 @@ private:
                                Color(0.95f, 0.55f, 0.30f), 150, true);
         auto armR  = spawnPart(Vec3(bx + 0.85f, 2.85f, bz), Vec3(0.28f, 1.0f, 0.28f),
                                Color(0.95f, 0.55f, 0.30f), 150, true);
-        shared_ptr<Block> plate, visor, bar;
-        if (armored) {
-            plate = spawnPart(Vec3(bx, 2.95f, bz + 0.46f), Vec3(1.25f, 1.15f, 0.16f),
-                              wallColor(), 0, false);
-            visor = spawnPart(Vec3(bx, 3.80f, bz + 0.40f), Vec3(0.62f, 0.62f, 0.14f),
-                              wallColor(), 0, false);
-        }
+        shared_ptr<Block> bar;
         if (windmill) {
-            bar = spawnPart(Vec3(bx, 3.35f, bz + 0.85f), Vec3(2.6f, 0.28f, 0.2f),
+            // far enough out that swinging arms can never reach the blade
+            bar = spawnPart(Vec3(bx, 3.35f, bz + 1.15f), Vec3(2.6f, 0.28f, 0.2f),
                             wallColor(), 0, false);
         }
+        // windmill boss: calmer arms (a 65-deg flail reaches the blade plane)
+        float armSwing = windmill ? 40.0f : 65.0f;
 
-        callAfter(0.1, [this, pelvis, torso, head, armL, armR, plate, visor, bar]() {
+        callAfter(0.1, [this, pelvis, torso, head, armL, armR, bar, armSwing]() {
             if (!rbOf(torso) || !rbOf(torso)->body().isValid()) return;   // level changed
             Vec3 pp = pelvis->getGlobalPos();   // pelvis may have marched
             place(torso, pp + Vec3(0, 1.25f, 0));
             place(head,  pp + Vec3(0, 2.10f, 0));
             place(armL,  pp + Vec3(-0.85f, 1.15f, 0));
             place(armR,  pp + Vec3( 0.85f, 1.15f, 0));
-            if (plate) {
-                place(plate, pp + Vec3(0, 1.25f, 0.46f));
-                place(visor, pp + Vec3(0, 2.10f, 0.40f));
-            }
-            if (bar) place(bar, pp + Vec3(0, 1.65f, 0.85f));
+            if (bar) place(bar, pp + Vec3(0, 1.65f, 1.15f));
             const Vec3 Y(0, 1, 0);
             Vec3 tp = pp + Vec3(0, 1.25f, 0);
             // Break thresholds are in newtons: ~4-6x what the joint carries
@@ -685,69 +678,20 @@ private:
             // shoulders: wide swing — the arms flail as it marches (~0.8 kN)
             rbOf(armL)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(-0.72f, 0.42f, 0), Y)
-                    .swing(TAU * 65.0f / 360.0f)
+                    .swing(TAU * armSwing / 360.0f)
                     .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)
                     .breakForce(3500.0f));
             rbOf(armR)->jointTo(torso.get(),
                 Joint::swingTwist(tp + Vec3(0.72f, 0.42f, 0), Y)
-                    .swing(TAU * 65.0f / 360.0f)
+                    .swing(TAU * armSwing / 360.0f)
                     .twist(-TAU * 20.0f / 360.0f, TAU * 20.0f / 360.0f)
                     .breakForce(3500.0f));
-            if (plate) {   // armor hangs stiff in front; soaks the impact and
-                           // strips well before the waist gives (9 < 25 kN)
-                rbOf(plate)->jointTo(torso.get(),
-                    Joint::swingTwist(tp + Vec3(0, 0, 0.30f), Y)
-                        .swing(TAU * 15.0f / 360.0f)
-                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
-                        .breakForce(9000.0f));
-                rbOf(visor)->jointTo(head.get(),
-                    Joint::swingTwist(pp + Vec3(0, 2.10f, 0.26f), Y)
-                        .swing(TAU * 15.0f / 360.0f)
-                        .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
-                        .breakForce(2500.0f));
-            }
             if (bar) {     // motor-driven blade: hinge facing the cannon
                 PhysicsJoint j = rbOf(bar)->jointTo(pelvis.get(),
-                    Joint::hinge(pp + Vec3(0, 1.65f, 0.85f), Vec3(0, 0, 1))
-                        .breakForce(6000.0f));
+                    Joint::hinge(pp + Vec3(0, 1.65f, 1.15f), Vec3(0, 0, 1))
+                        .breakForce(25000.0f));
                 j.setMotorVelocity(3.5f);
             }
-        });
-    }
-
-    // L13: wrecking ball on a chain, guarding the gold row beneath it.
-    void buildWrecking() {
-        auto arm = make_shared<StaticProp>(Vec3(0, 5.5f, -5.3f),
-                                           Vec3(0.3f, 0.3f, 1.8f), wallColor());
-        arm->setName("wall");
-        towerRoot_->addChild(arm);
-        // chain hangs straight down (offset spawning made the joints snap
-        // together violently and tear themselves); the swing comes from an
-        // initial shove after wiring
-        auto l1 = spawnPart(Vec3(0, 5.05f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
-        auto l2 = spawnPart(Vec3(0, 4.60f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
-        auto l3 = spawnPart(Vec3(0, 4.15f, -6.0f), Vec3(0.14f, 0.36f, 0.14f), wallColor(), 0, false);
-        auto ball = spawnPart(Vec3(0, 3.55f, -6.0f), Vec3(0.62f, 0.62f, 0.62f), wallColor(), 0, false);
-        callAfter(0.1, [this, arm, l1, l2, l3, ball]() {
-            if (!rbOf(ball) || !rbOf(ball)->body().isValid()) return;
-            place(l1,   Vec3(0, 5.05f, -6.0f));
-            place(l2,   Vec3(0, 4.60f, -6.0f));
-            place(l3,   Vec3(0, 4.15f, -6.0f));
-            place(ball, Vec3(0, 3.55f, -6.0f));
-            const Vec3 Y(0, 1, 0);
-            // each link carries the ball (~2.3 kN static, ~3 kN swinging)
-            auto link = [&](shared_ptr<Block> a, shared_ptr<Node> base, Vec3 anchor) {
-                rbOf(a)->jointTo(base.get(),
-                    Joint::swingTwist(anchor, Y).swing(TAU * 40.0f / 360.0f)
-                        .twist(-TAU * 10.0f / 360.0f, TAU * 10.0f / 360.0f)
-                        .breakForce(8000.0f));
-            };
-            link(l1, arm, Vec3(0, 5.35f, -6.0f));
-            link(l2, l1, l1->getGlobalPos() + Vec3(0, -0.24f, 0));
-            link(l3, l2, l2->getGlobalPos() + Vec3(0, -0.24f, 0));
-            link(ball, l3, l3->getGlobalPos() + Vec3(0, -0.26f, 0));
-            // start the pendulum
-            rbOf(ball)->body().setLinearVelocity(Vec3(2.2f, 0, 0));
         });
     }
 
@@ -805,24 +749,31 @@ private:
         towerRoot_->addChild(headM);
         Color segC(0.55f, 0.80f, 0.95f);
         vector<shared_ptr<Block>> segs;
+        // slippery segments: the head tows the whole tail through link 1, and
+        // grippy friction (0.65) put ~3 kN sustained + stiction spikes on it
+        // first gap is wider: head (0.55 deep) + seg (0.45) at 0.5 spacing
+        // TOUCH at spawn, and the kinematic head's contact impulses fling
+        // the front segments violently
         for (int i = 0; i < 5; i++)
-            segs.push_back(spawnPart(Vec3(h.pos.x, 1.25f, -6.1f - 0.5f * i),
-                                     Vec3(0.45f, 0.45f, 0.45f), segC, 100, true));
+            segs.push_back(spawnPart(Vec3(h.pos.x, 1.25f, -6.22f - 0.5f * i),
+                                     Vec3(0.45f, 0.45f, 0.45f), segC, 100, true, 0.25f));
         callAfter(0.1, [this, headM, segs]() {
             if (!rbOf(segs[0]) || !rbOf(segs[0])->body().isValid()) return;
             Vec3 hp = headM->getGlobalPos();
             for (int i = 0; i < (int)segs.size(); i++)
-                place(segs[i], Vec3(hp.x, 1.25f, hp.z - 0.5f - 0.5f * i));
+                place(segs[i], Vec3(hp.x, 1.25f, hp.z - 0.62f - 0.5f * i));
             const Vec3 Y(0, 1, 0);
             for (int i = 0; i < (int)segs.size(); i++) {
                 shared_ptr<Node> base = (i == 0) ? (shared_ptr<Node>)headM
                                                  : (shared_ptr<Node>)segs[i - 1];
                 Vec3 a = (segs[i]->getGlobalPos() + base->getGlobalPos()) * 0.5f;
-                // tow tension peaks ~3 kN dragging the whole tail by friction
+                // link 1 drags the WHOLE tail by friction: 0.65*365kg*g ~= 2.9 kN
+                // sustained, with stiction spikes well above — 18 kN holds that
+                // and still tears under a cannonball (45 kN+)
                 rbOf(segs[i])->jointTo(base.get(),
                     Joint::swingTwist(a, Y).swing(TAU * 50.0f / 360.0f)
                         .twist(-TAU * 15.0f / 360.0f, TAU * 15.0f / 360.0f)
-                        .breakForce(6000.0f));
+                        .breakForce(18000.0f));
             }
         });
     }

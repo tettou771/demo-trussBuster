@@ -13,6 +13,7 @@ struct BlockDef {
     Vec3  size;
     Color color;
     int   points = 100;
+    float friction = 0.65f;                  // surface grip (snake segs are slippery)
     bool  wall = false;   // static obstacle: immovable, doesn't count, can't bust
     // kinematic shuttle (moving obstacle; gray like walls, not a target)
     bool     mover = false;
@@ -37,7 +38,7 @@ inline Color toLinearColor(const Color& c) {
 inline bool& stageEditMode() { static bool b = false; return b; }
 
 // Levels with jointed/special structures get built procedurally in GameScene.
-enum class Special { None, Boss, ArmorBoss, WindmillBoss, Wrecking, Bridge, Snake, PinShelf };
+enum class Special { None, Boss, WindmillBoss, Bridge, Snake, PinShelf };
 
 struct LevelDef {
     string           name;
@@ -287,32 +288,10 @@ inline vector<LevelDef> makeLevels() {
         levels.push_back(l);
     }
 
-    {   // Level 11: the boss again — now ARMORED. Gray plates (not targets)
-        // hang on breakable joints in front of torso and head; they soak the
-        // cannonball's energy, so strip the armor first.
-        LevelDef l{"ARMORED", 6, {}};
-        l.special = Special::ArmorBoss;
-        levels.push_back(l);
-    }
-
     {   // Level 12: the boss carries a motor-driven spinning bar that bats
         // cannonballs away — time your shots through the blade.
         LevelDef l{"WINDMILL", 8, {}};
         l.special = Special::WindmillBoss;
-        levels.push_back(l);
-    }
-
-    {   // Level 13: a wrecking ball hangs from a gantry, guarding the gold
-        // row behind it. Cut the chain and the guardian crushes its own wards.
-        LevelDef l{"GUARDIAN", 5, {}};
-        // gantry post (visual; the arm + chain are built in GameScene)
-        l.blocks.push_back({Vec3(0, 3.3f, -4.6f), Vec3(0.3f, 4.6f, 0.3f),
-                            wallColor(), 0, true});
-        Color goldC(1.0f, 0.82f, 0.1f);
-        for (float x : {-0.9f, 0.0f, 0.9f})
-            l.blocks.push_back({Vec3(x, 1.25f, -6.0f), Vec3(0.5f, 0.5f, 0.5f),
-                                goldC, 200});
-        l.special = Special::Wrecking;
         levels.push_back(l);
     }
 
