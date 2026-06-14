@@ -280,43 +280,43 @@ inline vector<LevelDef> makeLevels() {
         levels.push_back(l);
     }
 
-    {   // Level 10: ...a boss?! A shabby humanoid robot marches across the
-        // stage — kinematic legs (not a target), jointed torso/arms/head.
-        // Tear it apart. (Geometry built in GameScene::buildBoss.)
-        LevelDef l{"BOSS?!", 6, {}};
-        l.special = Special::Boss;
-        levels.push_back(l);
-    }
-
-    {   // Level 12: the boss carries a motor-driven spinning bar that bats
-        // cannonballs away — time your shots through the blade.
-        LevelDef l{"WINDMILL", 8, {}};
+    {   // Level 10 (finale): a marching humanoid boss spinning a motor-driven
+        // bar that bats cannonballs away — time your shots through the blade,
+        // then tear off its jointed arms/head. (Geometry: GameScene::buildBoss.)
+        LevelDef l{"HUMANOID", 8, {}};
         l.special = Special::WindmillBoss;
         levels.push_back(l);
     }
 
-    {   // Level 14: a plank bridge hangs between two pylons by block-chain
-        // ropes, targets standing on it. Shoot targets directly — or cut a
-        // rope and dump everything at once.
-        LevelDef l{"ROPEWAY", 4, {}};
-        l.special = Special::Bridge;
-        levels.push_back(l);
-    }
-
-    {   // Level 15: a marching snake of jointed segments. Where you cut
-        // matters: sever near the head and the whole body rips free.
-        LevelDef l{"SNAKE", 7, {}};
-        l.special = Special::Snake;
-        levels.push_back(l);
-    }
-
-    {   // Level 16: two thin pillars prop a shelf near the edge — no joints,
-        // pure stacking. Pick the right pillar and the shelf dumps its gold
-        // over the side.
-        LevelDef l{"THE SHELF", 3, {}};
-        l.special = Special::PinShelf;
-        levels.push_back(l);
-    }
+    // --- Cut for the 10-stage release; kept (disabled) as a mechanics gallery.
+    //     Re-enable any block to bring the stage back.
+    //
+    // {   // a plain boss without the windmill bar
+    //     LevelDef l{"BOSS?!", 6, {}};
+    //     l.special = Special::Boss;
+    //     levels.push_back(l);
+    // }
+    //
+    // {   // a plank bridge hung between two pylons by block-chain ropes; cut a
+    //     // rope and dump everything at once
+    //     LevelDef l{"ROPEWAY", 4, {}};
+    //     l.special = Special::Bridge;
+    //     levels.push_back(l);
+    // }
+    //
+    // {   // a marching snake of jointed segments; sever near the head and the
+    //     // whole body rips free
+    //     LevelDef l{"SNAKE", 7, {}};
+    //     l.special = Special::Snake;
+    //     levels.push_back(l);
+    // }
+    //
+    // {   // two thin pillars prop a shelf near the edge — pure stacking; pick
+    //     // the right pillar and the shelf dumps its gold over the side
+    //     LevelDef l{"THE SHELF", 3, {}};
+    //     l.special = Special::PinShelf;
+    //     levels.push_back(l);
+    // }
 
     return levels;
 }
