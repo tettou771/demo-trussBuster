@@ -34,7 +34,9 @@ void tcApp::setup() {
                           random(1.0f, 2.6f), random(0.0f, TAU)});
     }
 
-    inspector_.setEnabled(false);   // dev tool, opt-in via F1
+    // NodeInspector is a singleton; this app drives its own imgui frame (debug
+    // panel), so we call instance().draw() in draw() rather than attach().
+    NodeInspector::instance().setEnabled(false);   // dev tool, opt-in via F1
 
     registerMcpTools();
 }
@@ -61,13 +63,13 @@ void tcApp::draw() {
     drawCircle(W * 0.82f - 16, H * 0.15f - 8, 32);
 
     imguiBegin();
-    inspector_.draw(*this);
+    NodeInspector::instance().draw(*this);
     if (debugPanel_) drawDebugPanel();
     imguiEnd();
 }
 
 void tcApp::keyPressed(int key) {
-    if (key == KEY_F1) { inspector_.toggle(); return; }
+    if (key == KEY_F1) { NodeInspector::instance().toggle(); return; }
     if (key == KEY_F2) { debugPanel_ = !debugPanel_; return; }
     scene_->handleKey(key, true);
 }
@@ -77,13 +79,9 @@ void tcApp::keyReleased(int key) {
 }
 
 void tcApp::mousePressed(const MouseEventArgs& e) {
-    // mobile: any tap acts as ENTER outside gameplay (tap to start / continue)
-    if (mobile_) {
-        Phase p = scene_->getPhase();
-        if (p == Phase::Title || p == Phase::GameOver || p == Phase::AllClear) {
-            scene_->handleKey(KEY_ENTER, true);
-        }
-    }
+    // Click / tap anywhere advances the title / game-over / all-clear screens
+    // (and unlocks web audio on the first gesture). No-op during play.
+    scene_->confirm();
 }
 
 void tcApp::cleanup() {

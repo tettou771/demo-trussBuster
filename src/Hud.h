@@ -82,11 +82,15 @@ private:
         centerShadow("TRUSS BUSTER", H * 0.18f, logoScale, logoCol);
 
         if (fmodf(t, 1.2f) < 0.75f)
-            centerShadow(mobile_ ? "TAP TO START" : "PRESS ENTER TO START",
+            centerShadow(mobile_ ? "TAP TO START" : "CLICK TO START",
                          H * 0.42f, 3.0f * uiScale(), Color(1.0f, 0.95f, 0.6f));
 
         center("HI SCORE  " + pad(scene_->getHiScore()), H * 0.51f, 2.0f * uiScale(),
                Color(0.95f, 0.6f, 0.5f));
+
+        // build stamp (compile time): a quick "is the latest deploy live?" check
+        setColor(0.4f, 0.42f, 0.5f);
+        drawBitmapString("build " __DATE__ " " __TIME__, 24, getHeight() - 14, 1.0f);
 
         // attract-mode tag
         if (fmodf(t, 0.8f) < 0.5f) {
@@ -170,6 +174,10 @@ private:
             if (inZone) setColor(1.0f, 1.0f, 1.0f);   // flash white in the zone
             else        setColor(Color::fromHSB(0.33f * (1.0f - p), 0.85f, 0.95f));
             drawRect(gx, gy, gw * p, gh);
+        } else if (!mobile_ && !scene_->isAutopilot()) {
+            // how-to-fire reminder, in the gauge's spot when not charging
+            setColor(0.6f, 0.62f, 0.7f);
+            drawBitmapString("HOLD SPACE TO FIRE", 24, H - 100, 1.5f);
         }
 
         // (MAX shots are celebrated by sound only — an on-screen banner felt spammy)
@@ -194,7 +202,7 @@ private:
         center("SCORE  " + pad(scene_->getScore()),
                H * 0.38f + 80 * k, 2.5f * k, Color(0.95f, 0.95f, 1.0f));
         if (fmodf(getElapsedTimef(), 1.2f) < 0.75f)
-            center(mobile_ ? "TAP TO CONTINUE" : "PRESS ENTER",
+            center(mobile_ ? "TAP TO CONTINUE" : "CLICK TO CONTINUE",
                    H * 0.38f + 130 * k, 2.0f * k, Color(0.8f, 0.8f, 0.85f));
     }
 
@@ -209,7 +217,7 @@ private:
         center("YOU ARE A TRUE TRUSS BUSTER", H * 0.28f + 240 * k, 2.0f * k,
                Color(0.7f, 0.9f, 0.75f));
         if (fmodf(t, 1.2f) < 0.75f)
-            center(mobile_ ? "TAP TO CONTINUE" : "PRESS ENTER",
+            center(mobile_ ? "TAP TO CONTINUE" : "CLICK TO CONTINUE",
                    H * 0.28f + 290 * k, 2.0f * k, Color(0.8f, 0.8f, 0.85f));
     }
 };

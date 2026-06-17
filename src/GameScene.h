@@ -309,15 +309,18 @@ public:
         if (!jukebox().bgm.isPlaying()) jukebox().bgm.play();
     }
 
+    // Click / tap to advance the non-gameplay screens. A click also satisfies
+    // the browser's autoplay gate, so audio starts here on web. No-op during
+    // play, so a stray canvas click never disrupts a shot.
+    void confirm() {
+        if (phase_ == Phase::Title)         startGame();
+        else if (phase_ == Phase::GameOver) toTitle();
+        else if (phase_ == Phase::AllClear) toTitle();
+    }
+
     void handleKey(int key, bool down) {
         if (key == KEY_LEFT || key == KEY_RIGHT || key == KEY_UP || key == KEY_DOWN) {
             held_[key] = down;
-            return;
-        }
-        if (down && key == KEY_ENTER) {
-            if (phase_ == Phase::Title)         startGame();
-            else if (phase_ == Phase::GameOver) toTitle();
-            else if (phase_ == Phase::AllClear) toTitle();
             return;
         }
         if (key == KEY_SPACE && phase_ == Phase::Playing && !autopilot_) {

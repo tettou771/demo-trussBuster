@@ -14,7 +14,7 @@ using namespace tcx;
 
 // TRUSS BUSTER — knock truss towers off the platform with a cannon.
 //
-//   ENTER          start
+//   CLICK / TAP    start (and continue after game over / all clear)
 //   ARROWS         aim
 //   SPACE (hold)   charge & fire
 //   F1             node inspector
@@ -38,7 +38,6 @@ private:
     shared_ptr<GameScene>     scene_;
     shared_ptr<Hud>           hud_;
     shared_ptr<TouchControls> touch_;
-    NodeInspector             inspector_;
     bool                      mobile_ = false;
     bool                      debugPanel_ = false;
     float                     dbgPower_ = 0.7f;
