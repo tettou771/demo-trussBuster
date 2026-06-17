@@ -181,8 +181,8 @@ inline vector<LevelDef> makeLevels() {
         l.blocks.push_back({Vec3(-0.30f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         l.blocks.push_back({Vec3( 0.30f, 1.25f, -7.3f), Vec3(0.5f, 0.5f, 0.5f), pairC, 200});
         for (float sgn : {-1.0f, 1.0f}) {
-            l.blocks.push_back({Vec3(sgn * 2.2f, 1.4f, -4.1f), Vec3(2.0f, 0.8f, 0.4f),
-                                wallColor(), 0, true});
+            l.blocks.push_back({.pos = Vec3(sgn * 2.2f, 1.4f, -4.1f), .size = Vec3(2.0f, 0.8f, 0.4f),
+                                .color = wallColor(), .points = 0, .wall = true});
             l.blocks.push_back({Vec3(sgn * 2.3f, 1.2f, -7.55f), Vec3(0.4f, 0.4f, 0.4f),
                                 single, 100});
         }
@@ -248,8 +248,8 @@ inline vector<LevelDef> makeLevels() {
         LevelDef l{"MOGURA", 8, {}};
         Color targetC(0.95f, 0.85f, 0.30f), goldC(1.0f, 0.82f, 0.1f);
         // the fence (static): full stage width, hides everything behind it
-        l.blocks.push_back({Vec3(0, 1.75f, -5.0f), Vec3(6.4f, 1.5f, 0.2f),
-                            wallColor(), 0, true});
+        l.blocks.push_back({.pos = Vec3(0, 1.75f, -5.0f), .size = Vec3(6.4f, 1.5f, 0.2f),
+                            .color = wallColor(), .points = 0, .wall = true});
         // three pistons + their big riders
         const float px[3]    = {-1.8f, 0.0f, 1.8f};
         const float dwell[3] = {1.6f, 2.3f, 3.0f};   // staggered pop timing
