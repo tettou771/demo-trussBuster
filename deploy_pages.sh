@@ -15,9 +15,18 @@ PAGES_DIR=${1:-/tmp/tb_pages}
 [ -f bin/trussBuster.html ] || { echo "run a web build first (trusscli build --web)"; exit 1; }
 
 cp bin/trussBuster.js bin/trussBuster.wasm bin/trussBuster.data "$PAGES_DIR/"
+# Cache-bust: asset filenames are fixed (trussBuster.js/.wasm/.data), so without
+# a per-deploy version query the browser / Pages CDN serve the stale build.
+export TB_VER=$(date +%Y%m%d%H%M%S)
 python3 - "$PAGES_DIR/index.html" <<'EOF'
-import sys
+import sys, os
+ver = os.environ['TB_VER']
 src = open('bin/trussBuster.html').read()
+
+# Version the loader script and the wasm/data it fetches (locateFile).
+src = src.replace('src=trussBuster.js', 'src=trussBuster.js?v=' + ver, 1)
+src = src.replace('var Module={canvas:canvasElement,',
+                  'var Module={locateFile:function(p){return p+"?v=%s"},canvas:canvasElement,' % ver, 1)
 
 # PWA / notch metas (iPhone standalone fullscreen via Add to Home Screen)
 metas = ('<meta name=apple-mobile-web-app-capable content=yes>'
